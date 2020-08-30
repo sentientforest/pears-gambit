@@ -22,5 +22,6 @@ Copy included in this repository at LICENSE_ARWES.
   - To start, left board is human v AI, right board tracks moves
   - Then setup right board to offer stockfish suggestions
   - At this point, could be deployed as single player static site
+  - Either here, or after implementating the API below, rework the stockfish implementation to use the wasm version.
 * Implement node-graphql API to track games, players, etc.
 * Tie UI into API, add interface elements for signup, login, game selection, etc.
