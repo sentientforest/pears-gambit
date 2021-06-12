@@ -1,0 +1,40 @@
+{
+  "canisters": {
+    "ic_chess": {
+      "main": "src/ic_chess/main.mo",
+      "type": "motoko"
+    },
+    "ic_chess_assets": {
+      "dependencies": [
+        "ic_chess"
+      ],
+      "frontend": {
+        "entrypoint": "src/ic_chess_assets/public/index.jsx"
+      },
+      "source": [
+        "src/ic_chess_assets/assets",
+        "dist/ic_chess_assets/"
+      ],
+      "type": "assets"
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": ""
+    }
+  },
+  "dfx": "0.6.7",
+  "networks": {
+    "local": {
+      "bind": "127.0.0.1:8000",
+      "type": "ephemeral"
+    },
+    "tungsten": {
+      "providers": [
+        "https://gw.dfinity.network"
+      ],
+      "type": "persistent"
+    }
+  },
+  "version": 1
+}
