@@ -1,6 +1,11 @@
 import { Component, OnInit, ViewChild } from '@angular/core';
 
-import { NgxChessBoardService, NgxChessBoardView } from 'ngx-chess-board';
+import {
+  MoveChange,
+  NgxChessBoardComponent,
+  NgxChessBoardService,
+  NgxChessBoardView
+} from 'ngx-chess-board';
 
 @Component({
   selector: 'app-chess-game',
@@ -11,15 +16,18 @@ import { NgxChessBoardService, NgxChessBoardView } from 'ngx-chess-board';
 export class ChessGameComponent implements OnInit {
 
   constructor(private ngxChessBoardService: NgxChessBoardService) { }
-  @ViewChild('player', {static: false}) player: NgxChessBoardView;
-  @ViewChild('plans', {static: true}) plans: NgxChessBoardView
+  @ViewChild('player', {static: false}) playerBoard: NgxChessBoardView;
+  @ViewChild('plans', {static: true}) planningBoard: NgxChessBoardView
   ngOnInit(): void {
-    this.player.moveChange.suscribe((move) => {
+
+  }
+  ngAfterInit(): void {
+    this.playerBoard.moveChange.suscribe((move) => {
       console.log(move)
     })
   }
 
   reset(): void {
-    this.player.reset();
+    this.playerBoard.reset();
   }
 }
