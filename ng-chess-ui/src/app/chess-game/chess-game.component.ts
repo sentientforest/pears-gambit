@@ -27,6 +27,7 @@ export class ChessGameComponent implements OnInit {
 
   moveCallback(move): void {
     console.log(move)
+    this.planningBoard.setFEN(move.fen);
   }
 
   reset(): void {
