@@ -7,7 +7,8 @@
     "build": "ng build",
     "test": "ng test",
     "lint": "ng lint",
-    "e2e": "ng e2e"
+    "e2e": "ng e2e",
+    "cp-stockfish": "cp node_modules/stockfish/src/stockfish.* src/assets/"
   },
   "private": true,
   "dependencies": {
@@ -23,6 +24,7 @@
     "@angular/router": "~10.2.4",
     "ngx-chess-board": "^2.1.10",
     "rxjs": "~6.6.0",
+    "stockfish": "^12.0.0",
     "tslib": "^2.0.0",
     "zone.js": "~0.10.2"
   },
