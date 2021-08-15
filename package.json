@@ -16,5 +16,4 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Michael Graham <michael@forested.earth>",
-  "license": "MIT"
 }

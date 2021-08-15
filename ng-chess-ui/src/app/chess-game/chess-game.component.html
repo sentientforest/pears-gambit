@@ -1,12 +1,24 @@
 <div class="game-frame">
   <div class="board-frame">
+    <h1>Game</h1>
     <ngx-chess-board [size]="350" (moveChange)="moveCallback($event)"
     #player></ngx-chess-board>
   </div>
   <div class="board-frame">
     <h1>Suggested Moves</h1>
-    <ngx-chess-board [size]="350"
+    <div class="suggestions">
+      <ol>
+        <li *ngFor="let move of suggestedMoves">
+          <button (click)="showSuggestedMove(move)">
+            Show
+          </button>
+          &nbsp;&nbsp; {{ move }}
+        </li>
+      </ol>
+    </div>
+    <ngx-chess-board [size]="200"
     [darkDisabled]="true" [lightDisabled]="true" [dragDisabled]="true"
     #plans></ngx-chess-board>
   </div>
+
 </div>
