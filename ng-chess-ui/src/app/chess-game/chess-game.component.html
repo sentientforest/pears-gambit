@@ -6,6 +6,9 @@
   </div>
   <div class="board-frame">
     <h1>Suggested Moves</h1>
+    <ngx-chess-board [size]="250"
+    [darkDisabled]="true" [lightDisabled]="true" [dragDisabled]="true"
+    #plans></ngx-chess-board>
     <div class="suggestions">
       <ol>
         <li *ngFor="let move of suggestedMoves">
@@ -16,9 +19,6 @@
         </li>
       </ol>
     </div>
-    <ngx-chess-board [size]="200"
-    [darkDisabled]="true" [lightDisabled]="true" [dragDisabled]="true"
-    #plans></ngx-chess-board>
   </div>
 
 </div>

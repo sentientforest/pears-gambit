@@ -4,5 +4,19 @@
 
 .board-frame {
   display: inline-block;
+  vertical-align: top;
   margin: 0.75em;
+}
+
+.suggestions ol li {
+  text-align: left;
+}
+
+@media (min-width: 800px) {
+  .board-frame {
+    max-width: 45%;
+  }
+  .game-frame {
+    min-width: 800px;
+  }
 }
