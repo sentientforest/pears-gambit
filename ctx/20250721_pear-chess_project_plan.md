@@ -620,14 +620,242 @@ This project plan outlines the implementation of Pear Chess, a peer-to-peer ches
 - Additional AI personalities
 - Cloud backup option
 
-## Conclusion
+---
 
-This project plan provides a structured approach to building Pear Chess over 10 weeks. The phased approach allows for iterative development with regular testing checkpoints. Key success factors include:
+## ⚠️ CRITICAL ISSUES IDENTIFIED (ADDENDUM)
 
-1. Strong foundation in Phase 1 (chess engine)
-2. Robust P2P infrastructure in Phase 2
-3. Careful integration of Stockfish in Phase 3
-4. Feature completion in Phase 4
-5. Quality focus in Phase 5
+**Date Added:** July 21, 2025  
+**Status:** REQUIRES IMMEDIATE ATTENTION  
+**Severity:** HIGH - Project cannot proceed without addressing these gaps
 
-Regular communication, risk monitoring, and adherence to the testing strategy will ensure successful delivery of a production-ready P2P chess application.
+### 🚨 Critical Issues Found
+
+#### 1. **Incorrect Dependency Versions**
+The project plan lists dependency versions that **don't match the actual available versions**:
+
+**Plan states:**
+- `autobase: "^4.0.0"`  
+- `hyperswarm: "^4.3.6"`
+
+**Actual versions available:**
+- `autobase: "7.15.0"` 
+- `hyperswarm: "4.12.1"`
+
+**Impact:** Using incorrect versions will cause installation failures and API incompatibilities.
+
+#### 2. **Missing Critical Dependencies**
+The plan doesn't include several **required dependencies** found in the source code:
+
+**Missing from plan:**
+- `corestore` - Required for Autobase examples
+- `hyperbee` - Dependency of autobase 7.15.0
+- `hypercore-id-encoding` - Required by autobase
+- `hyperdht` - Required by hyperswarm 4.12.1
+- `autobase-test-helpers` - Needed for P2P testing
+
+#### 3. **Unclear Stockfish Integration Path**
+The plan states "Add Stockfish WASM files to assets" but provides no specifics:
+
+**Missing information:**
+- Where to source Stockfish WASM builds?
+- Which Stockfish version is compatible?
+- How to handle cross-platform WASM loading in Bare runtime?
+- Expected file sizes and performance characteristics?
+
+#### 4. **Autobase API Confusion**
+The design document shows Autobase constructor patterns that **don't match the actual API**:
+
+**Design shows:**
+```javascript
+new Autobase(store, null, { ... })
+```
+
+**Actual API from examples:**
+```javascript
+new Autobase(store, { ... })  // No bootstrap parameter for new instances
+new Autobase(store, existingKey, { ... })  // For joining existing
+```
+
+#### 5. **Testing Strategy Gaps**
+
+**Multi-instance testing is undefined:**
+- How to handle different storage paths for each instance?
+- No mention of `autobase-test-helpers` package needed for sync testing
+- Missing details on peer discovery simulation
+
+**P2P testing environment:**
+- Plan suggests `PORT=9001` but Pear apps don't use traditional ports
+- No explanation of how to test NAT traversal locally
+- Missing network isolation testing procedures
+
+#### 6. **Chess Engine Integration Questions**
+
+**Chess.js dependency concerns:**
+- Plan lists `chess.js: "^1.0.0"` but this seems outdated
+- No verification if chess.js works with Bare runtime
+- Alternative: Should we implement chess logic from scratch for better control?
+
+#### 7. **Resource Management Unknowns**
+
+**Storage paths and cleanup:**
+- How does Corestore storage interact with Pear app sandboxing?
+- What happens to storage when app is uninstalled?
+- How to handle storage quotas or cleanup of old games?
+
+#### 8. **Development Environment Issues**
+
+**Brittle testing framework:**
+- Plan assumes Brittle works the same as in Node.js
+- No verification that all testing patterns work in Bare runtime
+- Missing details on test debugging in Pear environment
+
+#### 9. **Performance Metrics Are Unvalidated**
+
+**Questionable benchmarks:**
+- "<100ms move validation time" - Is this realistic for P2P sync validation?
+- "<3s peer connection establishment" - Depends heavily on network topology
+- "<50MB application size" - With Stockfish WASM this may be impossible
+
+#### 10. **Bare Runtime Compatibility Questions**
+
+**Missing compatibility verification:**
+- Do all planned libraries work with Bare runtime?
+- Are there Node.js-specific APIs being used?
+- How does Web Worker support work in Bare vs browsers?
+
+## 📋 Open Questions Requiring Research
+
+1. **What is the exact procedure to obtain and integrate Stockfish WASM for Bare runtime?**
+
+2. **How does Corestore storage work within Pear app constraints?**
+
+3. **What's the correct pattern for multi-instance P2P testing in Pear development?**
+
+4. **Are there known compatibility issues between chess.js and Bare runtime?**
+
+5. **How should we handle game state recovery when peers disconnect during Autobase consensus?**
+
+6. **What are realistic performance expectations for WASM Stockfish in Bare runtime?**
+
+7. **How does the Pear update mechanism affect ongoing games stored in Autobase?**
+
+## 🔧 Immediate Actions Required (WEEK 0 - UPDATED)
+
+### Priority 1: Dependency Verification (Days 1-2)
+- [ ] **Audit all dependency versions** against actual available packages in @ext/
+- [ ] **Test basic Autobase functionality** with correct API patterns
+- [ ] **Verify chess.js compatibility** with Bare runtime or select alternative
+- [ ] **Update all package.json examples** with correct versions
+
+### Priority 2: Core Architecture Validation (Days 3-4)
+- [ ] **Create proof-of-concept** for Autobase multi-writer chess moves
+- [ ] **Test Hyperswarm peer discovery** in local development environment
+- [ ] **Document actual Corestore storage behavior** in Pear apps
+- [ ] **Establish multi-instance testing methodology**
+
+### Priority 3: Stockfish Integration Research (Days 5-7)
+- [ ] **Source compatible Stockfish WASM builds** for Bare runtime
+- [ ] **Test WASM loading and UCI communication** in Bare environment
+- [ ] **Benchmark performance** and memory usage expectations
+- [ ] **Document integration procedure** with concrete steps
+
+### Revised Dependencies List
+
+**Core Dependencies (CORRECTED):**
+```json
+{
+  "hyperswarm": "^4.12.1",
+  "hypercore": "^11.4.0",
+  "hyperdrive": "^13.0.1",
+  "autobase": "^7.15.0",
+  "corestore": "^7.2.1",
+  "hyperbee": "^2.22.0",
+  "hypercore-crypto": "^3.5.0",
+  "hypercore-id-encoding": "^1.3.0",
+  "hyperdht": "^6.11.0",
+  "compact-encoding": "^2.16.0",
+  "b4a": "^1.6.7"
+}
+```
+
+**Testing Dependencies (ADDED):**
+```json
+{
+  "autobase-test-helpers": "^3.0.0",
+  "brittle": "^3.13.1",
+  "standard": "^17.1.2"
+}
+```
+
+**Chess Dependencies (TO BE VERIFIED):**
+```json
+{
+  "chess.js": "TBD - requires compatibility testing",
+  "chessboard-element": "TBD - may need Bare-compatible alternative"
+}
+```
+
+## Updated Risk Assessment
+
+### CRITICAL RISKS (NEW)
+
+1. **Dependency Hell**
+   - **Risk:** Incompatible dependency versions breaking core functionality
+   - **Probability:** HIGH
+   - **Impact:** PROJECT BLOCKING
+   - **Mitigation:** Complete dependency audit before Phase 1
+
+2. **Bare Runtime Incompatibility**
+   - **Risk:** Planned libraries not working with Bare runtime
+   - **Probability:** MEDIUM
+   - **Impact:** MAJOR REWORK REQUIRED
+   - **Mitigation:** Early compatibility testing and fallback planning
+
+3. **Stockfish Integration Failure**
+   - **Risk:** Unable to integrate Stockfish WASM effectively
+   - **Probability:** MEDIUM
+   - **Impact:** CORE FEATURE LOSS
+   - **Mitigation:** Research alternatives, consider server-side fallback
+
+### SCHEDULE IMPACT
+
+Due to these critical issues, the project timeline requires adjustment:
+
+**REVISED WEEK 0 (EXTENDED):** 7 days instead of initial setup
+**RISK BUFFER:** Add 1 week to overall schedule (11 weeks total)
+**MILESTONE GATES:** Dependency verification must complete before Phase 1
+
+## ACTION PLAN FOR PROJECT RESTART
+
+### Step 1: Halt Current Planning
+- **DO NOT BEGIN DEVELOPMENT** until critical issues are resolved
+- Treat this as a **discovery/research phase**
+
+### Step 2: Form Technical Investigation Team  
+- Assign 1 developer full-time to dependency research
+- Engage with Pear/Holepunch community for guidance
+- Document all findings in technical research log
+
+### Step 3: Go/No-Go Decision Point
+After Week 0 research, make decision on:
+- **GO:** Issues resolved, continue with revised plan
+- **NO-GO:** Pivot to alternative architecture or defer project
+
+### Step 4: Revise All Documentation
+- Update design document with correct APIs
+- Revise project plan with accurate timelines
+- Create troubleshooting guide for discovered issues
+
+## Conclusion (REVISED)
+
+This project plan **cannot proceed as originally written** due to critical gaps in dependency understanding and API compatibility. The addition of this addendum transforms the plan from implementation-ready to research-required status.
+
+**Immediate Priority:** Address all critical issues identified above before any development work begins.
+
+**Success Criteria for Week 0:**
+- All dependencies verified and compatible
+- Autobase multi-writer patterns proven to work
+- Stockfish integration path clearly defined
+- Multi-instance testing methodology established
+
+Only after these prerequisites are met can the team proceed with confidence to Phase 1 development.
