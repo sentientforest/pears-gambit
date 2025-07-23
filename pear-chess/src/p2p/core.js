@@ -48,14 +48,17 @@ export class GameCore {
       // Use Pear's storage system or fallback to provided path
       let storageDir = this.options.storage
       
+      // Generate a unique instance identifier for this app instance
+      const instanceId = this.options.instanceId || this.generateInstanceId()
+      
       // Try to use Pear's storage system if available
       if (typeof Pear !== 'undefined' && Pear.config && Pear.config.storage) {
-        storageDir = Pear.config.storage + '/chess-p2p'
-        this.log('Using Pear storage:', storageDir)
+        storageDir = `${Pear.config.storage}/chess-p2p-${instanceId}`
+        this.log('Using Pear storage with instance ID:', storageDir)
       } else if (!storageDir || storageDir.startsWith('.')) {
         // Fallback to a more standard location
-        storageDir = './pear-chess-storage'
-        this.log('Using fallback storage:', storageDir)
+        storageDir = `./pear-chess-storage-${instanceId}`
+        this.log('Using fallback storage with instance ID:', storageDir)
       } else {
         this.log('Using provided storage:', storageDir)
       }
@@ -80,6 +83,21 @@ export class GameCore {
       this.onError(error)
       throw error
     }
+  }
+
+  /**
+   * Generate a unique instance identifier
+   */
+  generateInstanceId() {
+    // Use process ID if available, otherwise use timestamp + random
+    if (typeof process !== 'undefined' && process.pid) {
+      return `pid${process.pid}`
+    }
+    
+    // Fallback to timestamp + random for browsers/other environments
+    const timestamp = Date.now().toString(36)
+    const random = Math.random().toString(36).substring(2, 8)
+    return `${timestamp}-${random}`
   }
 
   /**
@@ -300,13 +318,23 @@ export class GameCore {
    * Get list of players (writers)
    */
   getPlayerList() {
-    if (!this.gameBase) return []
+    if (!this.gameBase || !this.gameBase.activeWriters) return []
 
-    return this.gameBase.inputs.map(input => ({
-      key: input.key.toString('hex'),
-      length: input.length,
-      writable: input.writable
-    }))
+    try {
+      const writers = []
+      // Get writers from the activeWriters instance
+      for (const writer of this.gameBase.activeWriters.all()) {
+        writers.push({
+          key: writer.core.key.toString('hex'),
+          length: writer.length,
+          writable: writer.core.writable
+        })
+      }
+      return writers
+    } catch (error) {
+      this.log('Error getting player list:', error)
+      return []
+    }
   }
 
   /**

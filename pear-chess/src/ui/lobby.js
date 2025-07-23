@@ -43,15 +43,45 @@ export class GameLobby {
   }
 
   /**
+   * Generate a unique instance identifier
+   */
+  generateInstanceId() {
+    // Use process ID if available, otherwise use timestamp + random
+    if (typeof process !== 'undefined' && process.pid) {
+      return `Player-${process.pid}`
+    }
+    
+    // Fallback to timestamp + random for browsers/other environments
+    const timestamp = Date.now().toString(36)
+    const random = Math.random().toString(36).substring(2, 5).toUpperCase()
+    return `Player-${random}`
+  }
+
+  /**
+   * Update the UI to show instance information
+   */
+  updateInstanceDisplay() {
+    const titleElement = document.querySelector('.game-lobby h2')
+    if (titleElement && this.instanceId) {
+      titleElement.innerHTML = `🍐 Pear's Gambit <small style="font-size: 0.5em; color: #666;">(${this.instanceId})</small>`
+    }
+  }
+
+  /**
    * Initialize P2P session
    */
   async initP2P() {
     try {
+      // Generate instance ID for this session
+      this.instanceId = this.generateInstanceId()
+      
       this.p2pSession = createP2PGameSession({
-        debug: this.options.debug
+        debug: this.options.debug,
+        instanceId: this.instanceId
       })
       
-      this.log('P2P session initialized')
+      this.log(`P2P session initialized with instance ID: ${this.instanceId}`)
+      this.updateInstanceDisplay()
     } catch (error) {
       this.log('Failed to initialize P2P session:', error)
       this.showError('Failed to initialize networking: ' + error.message)
