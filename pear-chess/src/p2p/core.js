@@ -4,6 +4,8 @@
  * Handles multi-writer game state synchronization using Autobase
  */
 
+/* global Pear */
+
 import Autobase from 'autobase'
 import Corestore from 'corestore'
 import { moveEncoding } from '../chess/game.js'
@@ -43,22 +45,33 @@ export class GameCore {
     try {
       this.log('Initializing game core...')
 
-      // Create corestore
-      this.store = new Corestore(this.options.storage)
+      // Use Pear's storage system or fallback to provided path
+      let storageDir = this.options.storage
+      
+      // Try to use Pear's storage system if available
+      if (typeof Pear !== 'undefined' && Pear.config && Pear.config.storage) {
+        storageDir = Pear.config.storage + '/chess-p2p'
+        this.log('Using Pear storage:', storageDir)
+      } else if (!storageDir || storageDir.startsWith('.')) {
+        // Fallback to a more standard location
+        storageDir = './pear-chess-storage'
+        this.log('Using fallback storage:', storageDir)
+      } else {
+        this.log('Using provided storage:', storageDir)
+      }
+      
+      this.store = new Corestore(storageDir)
       await this.store.ready()
 
       // Create autobase for multi-writer coordination
-      this.gameBase = new Autobase({
-        inputs: [this.store.get({ name: 'local-moves' })],
-        localInput: this.store.get({ name: 'local-moves' }),
-        valueEncoding: moveEncoding
+      this.gameBase = new Autobase(this.store, null, {
+        valueEncoding: moveEncoding,
+        open: this.openView.bind(this),
+        apply: this.applyMoves.bind(this)
       })
 
-      // Set up view for reading moves
-      this.gameView = this.gameBase.createReadStream()
-      this.bindEvents()
-
       await this.gameBase.ready()
+      this.bindEvents()
       this.isReady = true
 
       this.log('Game core initialized successfully')
@@ -70,19 +83,31 @@ export class GameCore {
   }
 
   /**
+   * Open view for Autobase - creates the view hypercore
+   */
+  openView(store) {
+    return store.get('chess-moves', { valueEncoding: moveEncoding })
+  }
+
+  /**
+   * Apply moves to the view - required by Autobase
+   */
+  async applyMoves(nodes, view, base) {
+    for (const node of nodes) {
+      this.log('Applying move node:', node)
+      
+      // Handle the move notification
+      this.handleNewMove(node)
+      
+      // Append to view
+      await view.append(node.value)
+    }
+  }
+
+  /**
    * Bind event handlers
    */
   bindEvents() {
-    // Listen for new moves
-    this.gameView.on('data', (node) => {
-      this.handleNewMove(node)
-    })
-
-    this.gameView.on('error', (error) => {
-      this.log('Game view error:', error)
-      this.onError(error)
-    })
-
     // Listen for autobase updates
     this.gameBase.on('append', (input, batch) => {
       this.log('Autobase append:', { input: input.key.toString('hex'), batch })
@@ -227,26 +252,24 @@ export class GameCore {
     try {
       const moves = []
       
-      // Create snapshot and read all moves
-      const snapshot = this.gameBase.createReadStream()
-      
-      return new Promise((resolve, reject) => {
-        snapshot.on('data', (node) => {
-          if (node.value) {
-            moves.push(node.value)
+      // Read from the autobase view
+      if (this.gameBase.view) {
+        const length = this.gameBase.view.length
+        
+        for (let i = 0; i < length; i++) {
+          try {
+            const node = await this.gameBase.view.get(i)
+            if (node) {
+              moves.push(node)
+            }
+          } catch (error) {
+            this.log('Error reading move at index', i, error)
           }
-        })
-
-        snapshot.on('end', () => {
-          this.log(`Retrieved ${moves.length} moves from game log`)
-          resolve(moves)
-        })
-
-        snapshot.on('error', (error) => {
-          this.log('Error reading moves:', error)
-          reject(error)
-        })
-      })
+        }
+      }
+      
+      this.log(`Retrieved ${moves.length} moves from game log`)
+      return moves
     } catch (error) {
       this.log('Failed to get moves:', error)
       throw error
