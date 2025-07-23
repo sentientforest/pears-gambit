@@ -2,7 +2,7 @@
   "name": "pears-gambit",
   "main": "index.html",
   "pear": {
-    "name": "Pear's Gambit",
+    "name": "pears-gambit",
     "type": "desktop",
     "gui": {
       "backgroundColor": "#1F2430",

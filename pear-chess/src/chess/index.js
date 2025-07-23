@@ -9,6 +9,9 @@ export { chessBoard, ChessBoard } from './board.js'
 export { moveHandler, MoveHandler } from './moves.js'
 export { pgnHandler, PgnHandler } from './pgn.js'
 
+// Import for internal use
+import { ChessGame } from './game.js'
+
 /**
  * Create a new chess game with default settings
  * @param {Object} options - Game options

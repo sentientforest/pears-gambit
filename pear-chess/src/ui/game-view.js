@@ -23,13 +23,20 @@ export class GameView {
       showControls: options.showControls !== false,
       showMoveHistory: options.showMoveHistory !== false,
       showGameInfo: options.showGameInfo !== false,
+      mode: options.mode || 'single-player', // single-player, p2p
       ...options
     }
 
     // Game state
-    this.game = null
+    this.game = options.chessGame || null
     this.chessBoard = null
     this.gameState = 'waiting' // waiting, active, paused, finished
+
+    // P2P state
+    this.p2pSession = options.p2pSession || null
+    this.gameSession = options.gameSession || null
+    this.playerColor = options.gameSession?.playerColor || null
+    this.isHost = options.gameSession?.isHost || false
 
     // UI elements
     this.boardContainer = null
@@ -201,22 +208,166 @@ export class GameView {
    * Start a new game
    */
   newGame() {
-    this.game = createGame({
-      players: {
-        white: 'Human Player',
-        black: 'Human Player'
-      },
-      onMove: this.onGameMove.bind(this),
-      onGameEnd: this.onGameEnd.bind(this),
-      onCheck: this.onCheck.bind(this)
-    })
+    // Only create new game if not provided via constructor (P2P mode)
+    if (!this.game) {
+      this.game = createGame({
+        players: {
+          white: 'Human Player',
+          black: 'Human Player'
+        },
+        onMove: this.onGameMove.bind(this),
+        onGameEnd: this.onGameEnd.bind(this),
+        onCheck: this.onCheck.bind(this)
+      })
+      this.game.start()
+    } else {
+      // P2P game - set up event handlers
+      this.game.onMove = this.onGameMove.bind(this)
+      this.game.onGameEnd = this.onGameEnd.bind(this)
+      this.game.onCheck = this.onCheck.bind(this)
+    }
 
-    this.game.start()
     this.chessBoard.setGameInstance(this.game)
     this.updateDisplay()
     
+    // Set up P2P event handlers if in P2P mode
+    if (this.p2pSession) {
+      this.setupP2PHandlers()
+    }
+    
     this.gameState = 'active'
-    console.log('New game started:', this.game.getGameInfo())
+    console.log('Game started:', this.game.getGameInfo())
+    
+    // Flip board for black player in P2P mode
+    if (this.playerColor === 'black') {
+      this.chessBoard.flip()
+    }
+  }
+
+  /**
+   * Set up P2P event handlers
+   */
+  setupP2PHandlers() {
+    if (!this.p2pSession) return
+
+    console.log('Setting up P2P event handlers')
+    
+    // Handle remote moves
+    this.p2pSession.gameSync.onMoveReceived = (move) => {
+      this.handleRemoteMove(move)
+    }
+
+    // Handle connection changes
+    this.p2pSession.gameSync.onConnectionChange = (peerId, status) => {
+      this.updateConnectionStatus(peerId, status)
+    }
+
+    // Handle game state changes
+    this.p2pSession.gameSync.onGameStateChange = (state, status) => {
+      this.handleGameStateChange(state, status)
+    }
+
+    // Handle errors
+    this.p2pSession.gameSync.onError = (error) => {
+      console.error('P2P error:', error)
+      this.showError('Network error: ' + error.message)
+    }
+  }
+
+  /**
+   * Send move to opponent through P2P network
+   */
+  async sendMoveToOpponent(move) {
+    try {
+      console.log('Sending move to opponent:', move)
+      await this.p2pSession.gameSync.sendMove(move)
+    } catch (error) {
+      console.error('Failed to send move:', error)
+      this.showError('Failed to send move to opponent')
+    }
+  }
+
+  /**
+   * Handle move received from opponent
+   */
+  handleRemoteMove(move) {
+    console.log('Received remote move:', move)
+    
+    // Validate it's the opponent's turn
+    if (move.player === this.playerColor) {
+      console.log('Ignoring our own move')
+      return
+    }
+    
+    // Apply the move to our local game
+    const result = this.game.makeMove(move)
+    
+    if (result.success) {
+      console.log('Remote move applied successfully')
+      this.updateDisplay()
+    } else {
+      console.error('Failed to apply remote move:', result.error)
+      this.showError('Sync error: Failed to apply opponent move')
+    }
+  }
+
+  /**
+   * Update connection status display
+   */
+  updateConnectionStatus(peerId, status) {
+    console.log(`Connection ${status}:`, peerId)
+    
+    // Update game info to show connection status
+    if (this.gameInfoContainer) {
+      const statusElement = document.getElementById('game-status')
+      if (statusElement) {
+        if (status === 'connected') {
+          statusElement.textContent = 'Connected'
+          statusElement.style.color = '#28a745'
+        } else if (status === 'disconnected') {
+          statusElement.textContent = 'Disconnected'
+          statusElement.style.color = '#dc3545'
+        }
+      }
+    }
+  }
+
+  /**
+   * Handle P2P game state changes
+   */
+  handleGameStateChange(state, status) {
+    console.log('P2P game state changed:', state, status)
+    
+    // Update UI based on P2P state
+    switch (state) {
+      case 'waiting':
+        this.updateGameStatus('Waiting for opponent...')
+        break
+      case 'connecting':
+        this.updateGameStatus('Connecting...')
+        break
+      case 'syncing':
+        this.updateGameStatus('Synchronizing...')
+        break
+      case 'active':
+        this.updateGameStatus('Active')
+        this.gameState = 'active'
+        break
+      case 'finished':
+        this.updateGameStatus('Game finished')
+        this.gameState = 'finished'
+        break
+    }
+  }
+
+  /**
+   * Update game status display
+   */
+  updateGameStatus(statusText) {
+    const statusElement = document.getElementById('game-status')
+    if (statusElement) {
+      statusElement.textContent = statusText
+    }
   }
 
   /**
@@ -226,10 +377,23 @@ export class GameView {
     if (this.gameState !== 'active') return
 
     console.log('Attempting move:', move)
+    
+    // In P2P mode, check if it's our turn
+    if (this.p2pSession && this.playerColor !== this.game.getTurn()) {
+      this.showError("It's not your turn")
+      return
+    }
+    
     const result = this.game.makeMove(move)
     
     if (result.success) {
       console.log('Move successful:', result.move)
+      
+      // Send move through P2P network if in P2P mode
+      if (this.p2pSession && this.gameSession) {
+        this.sendMoveToOpponent(result.move)
+      }
+      
       this.updateDisplay()
     } else {
       console.log('Move failed:', result.error)
@@ -328,16 +492,38 @@ export class GameView {
       'game-status': this.getStatusText(gameInfo),
       'current-turn': gameInfo.currentTurn === 'white' ? 'White' : 'Black',
       'move-count': gameInfo.moveCount,
-      'white-player': gameInfo.players.white || 'Unknown',
-      'black-player': gameInfo.players.black || 'Unknown'
+      'white-player': this.getPlayerName('white', gameInfo),
+      'black-player': this.getPlayerName('black', gameInfo)
     }
 
     for (const [id, value] of Object.entries(elements)) {
       const element = document.getElementById(id)
       if (element) {
         element.textContent = value
+        
+        // Highlight current player in P2P mode
+        if (id.includes('player') && this.p2pSession) {
+          const isCurrentPlayer = (id === 'white-player' && this.playerColor === 'white') ||
+                                 (id === 'black-player' && this.playerColor === 'black')
+          element.style.fontWeight = isCurrentPlayer ? 'bold' : 'normal'
+          element.style.color = isCurrentPlayer ? '#007bff' : '#333'
+        }
       }
     }
+  }
+
+  /**
+   * Get player name for display
+   */
+  getPlayerName(color, gameInfo) {
+    if (this.p2pSession) {
+      if (color === this.playerColor) {
+        return 'You'
+      } else {
+        return gameInfo.players[color] || 'Opponent'
+      }
+    }
+    return gameInfo.players[color] || 'Human'
   }
 
   /**
@@ -541,6 +727,32 @@ export class GameView {
         padding: 20px;
         border-radius: 8px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      }
+      
+      .connection-status {
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        text-align: center;
+        font-weight: bold;
+      }
+      
+      .connection-status.connected {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+      
+      .connection-status.disconnected {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      
+      .connection-status.connecting {
+        background-color: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeaa7;
       }
       
       .game-info h3, .move-history h3 {
