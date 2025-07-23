@@ -21,8 +21,13 @@
     "pear-interface": "^1.0.0"
   },
   "dependencies": {
-    "b4a": "^1.6.7",
+    "hyperswarm": "^4.12.1",
+    "hypercore": "^11.11.0",
+    "autobase": "^7.15.0",
+    "corestore": "^7.2.1",
+    "compact-encoding": "^2.11.0",
     "hypercore-crypto": "^3.6.1",
-    "hyperswarm": "^4.12.1"
+    "b4a": "^1.6.7",
+    "chess.js": "^1.0.0"
   }
 }

@@ -1,16 +1,28 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pear's Gambit - P2P Chess</title>
+  
   <style>
-    body > h1:nth-of-type(1) {
-      cursor: pointer
+    /* Reset and base styles */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
     }
 
     body {
       --title-bar-height: 42px;
       padding-top: var(--title-bar-height);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f5f5f5;
+      margin: 0;
+      overflow-x: hidden;
     }
 
+    /* Pear title bar */
     #bar {
       background: rgba(55, 60, 72, 0.6);
       backdrop-filter: blur(64px);
@@ -23,21 +35,107 @@
       white-space: nowrap;
       box-sizing: border-box;
       position: fixed;
-      z-index: 2;
+      z-index: 1000;
       width: 100%;
       left: 0;
       top: 0;
+      display: flex;
+      align-items: center;
+      padding-left: 80px;
+      font-size: 14px;
+      font-weight: 500;
     }
 
     pear-ctrl[data-platform=darwin] {
-      margin-top: 18px;
-      margin-left: 12px;
+      position: absolute;
+      top: 18px;
+      left: 12px;
+    }
+
+    /* Main application container */
+    #game-container {
+      width: 100%;
+      min-height: calc(100vh - var(--title-bar-height));
+    }
+
+    /* Loading screen */
+    .loading-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: calc(100vh - var(--title-bar-height));
+      background-color: #f5f5f5;
+    }
+
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #e3e3e3;
+      border-top: 4px solid #007bff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+
+    .loading-text {
+      color: #666;
+      font-size: 16px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Error styles */
+    .error-message {
+      position: fixed;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #ff6b6b;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 4px;
+      z-index: 10000;
+      font-size: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    /* Responsive design */
+    @media (max-width: 768px) {
+      body {
+        --title-bar-height: 50px;
+      }
+      
+      #bar {
+        height: var(--title-bar-height);
+        font-size: 12px;
+      }
     }
   </style>
   <script type='module' src='./app.js'></script>
 </head>
 <body>
-  <div id="bar"><pear-ctrl></pear-ctrl></div>
-  <h1>desktop</h1>
+  <!-- Pear title bar -->
+  <div id="bar">
+    <pear-ctrl></pear-ctrl>
+    <span>Pear's Gambit - P2P Chess</span>
+  </div>
+
+  <!-- Main application container -->
+  <div id="game-container">
+    <!-- Loading screen shown while initializing -->
+    <div class="loading-screen" id="loading-screen">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Initializing Pear's Gambit...</div>
+    </div>
+  </div>
+
+  <!-- Hidden template for error messages -->
+  <div class="error-message" id="error-template" style="display: none;">
+    Error message
+  </div>
 </body>
 </html>

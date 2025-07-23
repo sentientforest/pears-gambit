@@ -1,0 +1,304 @@
+/**
+ * Pear's Gambit - Chess Game Logic
+ * 
+ * Core chess game management using chess.js engine
+ * Handles game state, move validation, and game flow
+ */
+
+import { Chess } from 'chess.js'
+import cenc from 'compact-encoding'
+import { randomUUID } from 'crypto'
+
+// Custom encoding for chess moves (efficient P2P transmission)
+export const moveEncoding = cenc.from({
+  encode: (state, move) => {
+    cenc.uint32.encode(state, move.timestamp || Date.now())
+    cenc.uint8.encode(state, move.player === 'white' ? 0 : 1)
+    cenc.string.encode(state, move.from)
+    cenc.string.encode(state, move.to)
+    cenc.string.encode(state, move.piece)
+    cenc.string.encode(state, move.captured || '')
+    cenc.string.encode(state, move.promotion || '')
+    cenc.bool.encode(state, move.check || false)
+    cenc.bool.encode(state, move.checkmate || false)
+    cenc.string.encode(state, move.fen)
+    cenc.string.encode(state, move.san) // Standard Algebraic Notation
+  },
+  decode: (state) => ({
+    timestamp: cenc.uint32.decode(state),
+    player: cenc.uint8.decode(state) === 0 ? 'white' : 'black',
+    from: cenc.string.decode(state),
+    to: cenc.string.decode(state),
+    piece: cenc.string.decode(state),
+    captured: cenc.string.decode(state) || null,
+    promotion: cenc.string.decode(state) || null,
+    check: cenc.bool.decode(state),
+    checkmate: cenc.bool.decode(state),
+    fen: cenc.string.decode(state),
+    san: cenc.string.decode(state)
+  })
+})
+
+/**
+ * Chess Game Controller
+ * Manages game state, validates moves, and handles game flow
+ */
+export class ChessGame {
+  constructor(options = {}) {
+    this.chess = new Chess(options.fen)
+    this.gameId = options.gameId || this.generateGameId()
+    this.players = {
+      white: options.whitePlayer || null,
+      black: options.blackPlayer || null
+    }
+    this.gameState = 'waiting' // waiting, active, paused, finished
+    this.moveHistory = []
+    this.startTime = null
+    this.timeControl = options.timeControl || null
+    
+    // Event handlers
+    this.onMove = options.onMove || (() => {})
+    this.onGameEnd = options.onGameEnd || (() => {})
+    this.onCheck = options.onCheck || (() => {})
+  }
+
+  /**
+   * Generate unique game ID
+   */
+  generateGameId() {
+    return randomUUID()
+  }
+
+  /**
+   * Start the game
+   */
+  start() {
+    if (this.gameState !== 'waiting') {
+      throw new Error('Game already started')
+    }
+    
+    // Allow starting without players for testing
+    if (!this.players.white) {
+      this.players.white = 'White Player'
+    }
+    if (!this.players.black) {
+      this.players.black = 'Black Player'
+    }
+
+    this.gameState = 'active'
+    this.startTime = Date.now()
+    return true
+  }
+
+  /**
+   * Get current game position as FEN
+   */
+  getFen() {
+    return this.chess.fen()
+  }
+
+  /**
+   * Get current turn (who plays next)
+   */
+  getTurn() {
+    return this.chess.turn() === 'w' ? 'white' : 'black'
+  }
+
+  /**
+   * Get all legal moves for current position
+   */
+  getLegalMoves() {
+    return this.chess.moves({ verbose: true })
+  }
+
+  /**
+   * Get legal moves for a specific square
+   */
+  getLegalMovesForSquare(square) {
+    return this.chess.moves({ square, verbose: true })
+  }
+
+  /**
+   * Validate and make a move
+   */
+  makeMove(moveInput) {
+    if (this.gameState !== 'active') {
+      return { success: false, error: 'Game is not active' }
+    }
+
+    try {
+      // Attempt the move
+      const move = this.chess.move(moveInput)
+      
+      if (!move) {
+        return { success: false, error: 'Invalid move' }
+      }
+
+      // Create standardized move object
+      const standardMove = {
+        timestamp: Date.now(),
+        player: move.color === 'w' ? 'white' : 'black',
+        from: move.from,
+        to: move.to,
+        piece: move.piece,
+        captured: move.captured || null,
+        promotion: move.promotion || null,
+        check: this.chess.inCheck(),
+        checkmate: this.chess.isCheckmate(),
+        fen: this.chess.fen(),
+        san: move.san
+      }
+
+      // Add to move history
+      this.moveHistory.push(standardMove)
+
+      // Trigger events
+      this.onMove(standardMove)
+      
+      if (standardMove.check && !standardMove.checkmate) {
+        this.onCheck(standardMove)
+      }
+
+      // Check for game end conditions
+      if (this.isGameOver()) {
+        this.handleGameEnd()
+      }
+
+      return { success: true, move: standardMove }
+    } catch (error) {
+      return { success: false, error: error.message }
+    }
+  }
+
+  /**
+   * Undo the last move
+   */
+  undoMove() {
+    const move = this.chess.undo()
+    if (move) {
+      this.moveHistory.pop()
+      return { success: true, move }
+    }
+    return { success: false, error: 'No move to undo' }
+  }
+
+  /**
+   * Check if game is over
+   */
+  isGameOver() {
+    return this.chess.isGameOver()
+  }
+
+  /**
+   * Get game result
+   */
+  getGameResult() {
+    if (!this.isGameOver()) {
+      return null
+    }
+
+    if (this.chess.isCheckmate()) {
+      const winner = this.chess.turn() === 'w' ? 'black' : 'white'
+      return { result: 'checkmate', winner, loser: winner === 'white' ? 'black' : 'white' }
+    }
+
+    if (this.chess.isStalemate()) {
+      return { result: 'stalemate', winner: null }
+    }
+
+    if (this.chess.isThreefoldRepetition()) {
+      return { result: 'threefold_repetition', winner: null }
+    }
+
+    if (this.chess.isInsufficientMaterial()) {
+      return { result: 'insufficient_material', winner: null }
+    }
+
+    if (this.chess.isDraw()) {
+      return { result: 'draw', winner: null }
+    }
+
+    return { result: 'unknown', winner: null }
+  }
+
+  /**
+   * Handle game end
+   */
+  handleGameEnd() {
+    this.gameState = 'finished'
+    const result = this.getGameResult()
+    this.onGameEnd(result)
+  }
+
+  /**
+   * Get current board state
+   */
+  getBoard() {
+    return this.chess.board()
+  }
+
+  /**
+   * Get game information
+   */
+  getGameInfo() {
+    return {
+      gameId: this.gameId,
+      players: this.players,
+      gameState: this.gameState,
+      currentTurn: this.getTurn(),
+      fen: this.getFen(),
+      moveCount: this.moveHistory.length,
+      startTime: this.startTime,
+      isGameOver: this.isGameOver(),
+      result: this.isGameOver() ? this.getGameResult() : null
+    }
+  }
+
+  /**
+   * Load game from move history
+   */
+  loadFromHistory(moves) {
+    // Reset to starting position
+    this.chess.reset()
+    this.moveHistory = []
+
+    // Apply moves in sequence
+    for (const move of moves) {
+      const result = this.makeMove({ from: move.from, to: move.to, promotion: move.promotion })
+      if (!result.success) {
+        throw new Error(`Failed to apply move: ${move.san}`)
+      }
+    }
+  }
+
+  /**
+   * Export game to PGN format
+   */
+  toPgn() {
+    return this.chess.pgn()
+  }
+
+  /**
+   * Load game from PGN
+   */
+  loadPgn(pgn) {
+    if (this.chess.loadPgn(pgn)) {
+      // Rebuild move history from PGN
+      this.moveHistory = this.chess.history({ verbose: true }).map(move => ({
+        timestamp: Date.now(), // We don't have original timestamps
+        player: move.color === 'w' ? 'white' : 'black',
+        from: move.from,
+        to: move.to,
+        piece: move.piece,
+        captured: move.captured || null,
+        promotion: move.promotion || null,
+        check: false, // Would need to recalculate
+        checkmate: false, // Would need to recalculate
+        fen: '', // Would need to recalculate
+        san: move.san
+      }))
+      return true
+    }
+    return false
+  }
+}
