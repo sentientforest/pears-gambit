@@ -6,7 +6,7 @@
 
 import Hyperswarm from 'hyperswarm'
 import b4a from 'b4a'
-import { randomBytes } from 'crypto'
+import hypercoreCrypto from 'hypercore-crypto'
 
 /**
  * Swarm Manager for P2P connections
@@ -208,7 +208,7 @@ export class SwarmManager {
    * Create a new game topic
    */
   createGameTopic() {
-    const gameKey = randomBytes(32)
+    const gameKey = hypercoreCrypto.randomBytes(32)
     return {
       key: gameKey,
       inviteCode: gameKey.toString('hex')

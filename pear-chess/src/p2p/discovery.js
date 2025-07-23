@@ -4,7 +4,7 @@
  * Handles game discovery, invitations, and matchmaking
  */
 
-import { randomBytes } from 'crypto'
+import hypercoreCrypto from 'hypercore-crypto'
 
 /**
  * Game Discovery Manager
@@ -35,7 +35,7 @@ export class GameDiscovery {
    */
   generateInviteCode() {
     // Use base36 encoding for human-friendly codes
-    const randomPart = randomBytes(4).toString('hex').toUpperCase()
+    const randomPart = hypercoreCrypto.randomBytes(4).toString('hex').toUpperCase()
     
     // Format as XXX-XXX for readability
     const code = randomPart.substring(0, 3) + '-' + randomPart.substring(3, 6)
@@ -67,10 +67,10 @@ export class GameDiscovery {
       const invitation = {
         inviteCode,
         gameKey: gameKey.toString('hex'),
-        gameId: randomBytes(16).toString('hex'),
+        gameId: hypercoreCrypto.randomBytes(16).toString('hex'),
         createdAt: Date.now(),
         hostInfo: {
-          playerId: randomBytes(8).toString('hex'),
+          playerId: hypercoreCrypto.randomBytes(8).toString('hex'),
           playerName: gameConfig.playerName || 'Anonymous',
           rating: gameConfig.rating || null
         },
@@ -118,7 +118,7 @@ export class GameDiscovery {
         gameKey: gameKey.toString('hex'),
         joinedAt: Date.now(),
         playerInfo: {
-          playerId: randomBytes(8).toString('hex'),
+          playerId: hypercoreCrypto.randomBytes(8).toString('hex'),
           playerName: playerConfig.playerName || 'Anonymous',
           rating: playerConfig.rating || null
         }

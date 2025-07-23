@@ -7,7 +7,7 @@
 import Autobase from 'autobase'
 import Corestore from 'corestore'
 import { moveEncoding } from '../chess/game.js'
-import { randomBytes } from 'crypto'
+import hypercoreCrypto from 'hypercore-crypto'
 
 /**
  * Game Core for P2P synchronized chess games
@@ -25,7 +25,7 @@ export class GameCore {
     this.gameBase = null
     this.gameView = null
     this.isReady = false
-    this.gameId = options.gameId || randomBytes(32).toString('hex')
+    this.gameId = options.gameId || hypercoreCrypto.randomBytes(32).toString('hex')
 
     // Event handlers
     this.onMove = options.onMove || (() => {})

@@ -7,7 +7,6 @@
 
 import { Chess } from 'chess.js'
 import cenc from 'compact-encoding'
-import { randomUUID } from 'crypto'
 
 // Custom encoding for chess moves (efficient P2P transmission)
 export const moveEncoding = cenc.from({
@@ -66,7 +65,12 @@ export class ChessGame {
    * Generate unique game ID
    */
   generateGameId() {
-    return randomUUID()
+    // Simple UUID v4 generator that works in browser environments
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0
+      const v = c === 'x' ? r : (r & 0x3 | 0x8)
+      return v.toString(16)
+    })
   }
 
   /**
