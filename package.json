@@ -1,7 +1,7 @@
 {
-  "name": "sentientmachinelabs",
-  "version": "0.0.0",
-  "description": "work in progress",
+  "name": "pears-gambit",
+  "version": "0.1.0",
+  "description": "A peer-to-peer chess application with AI assistance, built on the Pear runtime",
   "main": "sentientmachinelabs-server.js",
   "dependencies": {
     "body-parser": "^1.19.0",
