@@ -1,4 +1,4 @@
-# Pear Chess: Project Implementation Plan
+# Pear's Gambit: Project Implementation Plan
 
 **Date:** July 21, 2025  
 **Project Duration:** 10 weeks (2.5 months)  
@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-This project plan outlines the implementation of Pear Chess, a peer-to-peer chess application with integrated AI assistance. The plan is structured around five major phases spanning 10 weeks, with clear milestones, dependencies, and risk mitigation strategies.
+This project plan outlines the implementation of Pear's Gambit, a peer-to-peer chess application with integrated AI assistance. The plan is structured around five major phases spanning 10 weeks, with clear milestones, dependencies, and risk mitigation strategies.
 
 ## Project Overview
 
@@ -19,7 +19,7 @@ This project plan outlines the implementation of Pear Chess, a peer-to-peer ches
 - Implement comprehensive testing for P2P scenarios
 
 ### Key Deliverables
-1. Fully functional P2P chess application
+1. Fully functional Pear's Gambit application
 2. Integrated Stockfish AI assistant
 3. Comprehensive test suite
 4. User and developer documentation
@@ -49,8 +49,8 @@ This project plan outlines the implementation of Pear Chess, a peer-to-peer ches
 
 3. **Project Initialization**
    ```bash
-   pear init --type desktop pear-chess
-   cd pear-chess
+   pear init --type desktop pears-gambit
+   cd pears-gambit
    ```
 
 4. **Development Environment Configuration**

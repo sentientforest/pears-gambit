@@ -1,4 +1,4 @@
-# Pear Chess: Peer-to-Peer Chess with AI Assistant Design
+# Pear's Gambit: Peer-to-Peer Chess with AI Assistant Design
 
 **Date:** July 20, 2025  
 **Author:** Claude Code Analysis  
@@ -70,7 +70,7 @@ After analyzing the available dependencies and considering implementation practi
 ### Application Structure
 
 ```
-pear-chess/
+pears-gambit/
 ├── package.json              # Pear app configuration
 ├── index.html               # Main UI entry point
 ├── app.js                   # Application bootstrap
@@ -531,8 +531,8 @@ sudo dnf install libatomic
 ### Project Initialization
 ```bash
 # Create new Pear chess project
-pear init --type desktop pear-chess
-cd pear-chess
+pear init --type desktop pears-gambit
+cd pears-gambit
 
 # Install dependencies
 npm install hyperswarm hypercore hyperdrive autobase corestore compact-encoding b4a chess.js
@@ -628,7 +628,7 @@ const connectionTimeout = setTimeout(() => {
 const { teardown } = Pear
 
 teardown(async () => {
-  console.log('Shutting down chess application...')
+  console.log('Shutting down Pear\'s Gambit...')
   
   // 1. Close Stockfish engine
   if (stockfish) {

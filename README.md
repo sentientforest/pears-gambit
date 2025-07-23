@@ -1,29 +1,42 @@
-# sentientmachinelabs
+# Pear's Gambit
 
-work in progress
+A peer-to-peer chess application with AI assistance, built on the Pear runtime.
 
-## AI Assisted Chess UI
+## Overview
 
-Goal - build an Human + AI Assist chess board for Human/AI vs Human/AI teams.
-Also, just serve as a test ground / hobby project for trying out new tech.
+Pear's Gambit is a fully decentralized chess platform that enables players to engage in chess matches directly with each other without centralized servers. The application integrates Stockfish as an embedded AI assistant to provide move suggestions, game analysis, and educational insights while maintaining the core peer-to-peer architecture.
 
-Currently, have three UIs started / trialed:
+## Architecture
 
-1) /chess-ui - react ui, a bit overly done with a third party sound / ui library.
-2) /ic_chess - an attempt to build this on the Dfinity Internet Computer.
-However, at time of implementation at least (Fall 2020), they seemed to have no way to
-support loading web workers from scripts. Learned the hard way that stockfish
-would not really be compatible with their platform.
-3) /ng-chess-ui - angular ui, work in progress.
+Pear's Gambit is built using the following technologies:
 
-## To-be-implemented / Planned
+- **Pear Runtime**: Bare JavaScript runtime optimized for P2P applications
+- **Hyperswarm**: Peer discovery and encrypted connections
+- **Autobase**: Multi-writer coordination for game state
+- **Stockfish**: Native chess engine binding for analysis
+- **Modern Web Standards**: Progressive enhancement for cross-platform compatibility
 
-* Get initial 2-board UI displayed
-  - To start, left board is human v AI, right board tracks moves
-  - Then setup right board to offer stockfish suggestions
-  - At this point, could be deployed as single player static site
-  - Either here, or after implementating the API below, rework the stockfish implementation to use the wasm version.
-* model data in sqlite and/or postgres for storing player/game/move data.
-* and/or look at implementing a peer-to-peer data model using hypercores.
-* Implement node-graphql API to track games, players, etc.
-* Tie UI into API, add interface elements for signup, login, game selection, etc.
+## Legacy Chess UIs
+
+This repository contains several previous chess UI implementations that informed the current P2P design:
+
+1. **chess-ui/** - React-based UI with Arwes sound/visual library
+2. **ic_chess/** - Dfinity Internet Computer implementation (discontinued due to Web Worker limitations)
+3. **ng-chess-ui/** - Angular-based UI prototype
+4. **pear-chess/** - Current Pear runtime implementation
+
+## Project Structure
+
+- `ctx/` - Design documents and project plans
+- `ext/` - External dependencies (Hypercore, Autobase, etc.)
+- `pear-chess/` - Main Pear application
+- Legacy UIs preserved for reference
+
+## Development
+
+The current focus is on the Pear-based implementation located in `/pear-chess/`. See the design documents in `/ctx/` for detailed architecture and implementation plans.
+
+## Documentation
+
+- [Design Document](ctx/20250720_pear-chess_design.md)
+- [Project Plan](ctx/20250721_pear-chess_project_plan.md)

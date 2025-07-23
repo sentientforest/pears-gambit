@@ -1,8 +1,8 @@
 {
-  "name": "pear-chess",
+  "name": "pears-gambit",
   "main": "index.html",
   "pear": {
-    "name": "pear-chess",
+    "name": "Pear's Gambit",
     "type": "desktop",
     "gui": {
       "backgroundColor": "#1F2430",
