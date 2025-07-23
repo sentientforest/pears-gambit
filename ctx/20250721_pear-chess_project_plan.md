@@ -252,28 +252,28 @@ This project plan outlines the implementation of Pear Chess, a peer-to-peer ches
 
 ## Phase 3: Stockfish Integration (Weeks 5-6)
 
-### Milestone 3.1: Stockfish Engine Setup
-**Duration:** 2 days  
+### Milestone 3.1: Stockfish Native Binding Setup
+**Duration:** 3 days  
 **Dependencies:** Phase 2 completion  
 **Assignee:** Developer 1
 
 #### Tasks:
-1. **Integrate Stockfish WASM**
-   - [ ] Add Stockfish WASM files to assets
-   - [ ] Create Web Worker for engine
-   - [ ] Implement UCI protocol communication
+1. **Create Stockfish Native Binding**
+   - [ ] Set up CMake build system (cmake-bare, cmake-harden)
+   - [ ] Implement C++ binding layer following bare-ffmpeg pattern
+   - [ ] Add UCI protocol wrapper for process communication
    - [ ] Engine initialization and configuration
 
 2. **Create engine management layer**
    - [ ] Start/stop engine controls
    - [ ] Resource usage monitoring
-   - [ ] Multiple engine instance support
+   - [ ] Process lifecycle management
    - [ ] Error handling and recovery
 
 #### Success Criteria:
-- Stockfish loads and initializes properly
-- UCI commands work correctly
-- Engine runs in isolated worker
+- Stockfish native binding compiles and loads
+- UCI commands work correctly through binding
+- Engine processes managed efficiently
 
 ### Milestone 3.2: Analysis Features
 **Duration:** 4 days  
@@ -495,10 +495,10 @@ This project plan outlines the implementation of Pear Chess, a peer-to-peer ches
    - **Mitigation:** Extensive testing, careful turn validation implementation
    - **Contingency:** Single-writer fallback mode
 
-3. **Stockfish Performance**
-   - **Risk:** WASM performance inadequate
-   - **Mitigation:** Implement adjustable analysis depth, background processing
-   - **Contingency:** Optional server-side analysis endpoint
+3. **Stockfish Integration Complexity**
+   - **Risk:** Native binding development overhead
+   - **Mitigation:** Follow proven bare-ffmpeg patterns, start with process-based approach
+   - **Contingency:** Fallback to external Stockfish process if binding fails
 
 4. **Cross-platform Compatibility**
    - **Risk:** Platform-specific bugs
@@ -530,7 +530,8 @@ This project plan outlines the implementation of Pear Chess, a peer-to-peer ches
 - **Code Repository:** GitHub/GitLab with LFS for assets
 
 ### External Dependencies
-- **Stockfish WASM builds**
+- **Stockfish source code or binaries** (for native binding)
+- **CMake build tools** (cmake-bare, cmake-harden, cmake-ports)
 - **Chess piece assets (SVG/PNG)**
 - **Opening book database**
 - **Sound effect files**
@@ -541,7 +542,7 @@ This project plan outlines the implementation of Pear Chess, a peer-to-peer ches
 - [ ] 90%+ test coverage
 - [ ] <100ms move validation time
 - [ ] <3s peer connection establishment
-- [ ] <50MB application size
+- [ ] <75MB application size (including native Stockfish)
 - [ ] Zero critical security vulnerabilities
 
 ### User Experience Metrics
@@ -653,14 +654,14 @@ The plan doesn't include several **required dependencies** found in the source c
 - `hyperdht` - Required by hyperswarm 4.12.1
 - `autobase-test-helpers` - Needed for P2P testing
 
-#### 3. **Unclear Stockfish Integration Path**
-The plan states "Add Stockfish WASM files to assets" but provides no specifics:
+#### 3. **Stockfish Native Binding Implementation**
+**RESOLVED:** Native binding approach identified following bare-ffmpeg pattern.
 
-**Missing information:**
-- Where to source Stockfish WASM builds?
-- Which Stockfish version is compatible?
-- How to handle cross-platform WASM loading in Bare runtime?
-- Expected file sizes and performance characteristics?
+**Implementation path:**
+- Use cmake-bare for Bare runtime integration
+- Implement process-based UCI communication initially
+- Follow proven C++ binding patterns from bare-ffmpeg
+- Expected performance better than WASM with direct execution
 
 #### 4. **Autobase API Confusion**
 The design document shows Autobase constructor patterns that **don't match the actual API**:
@@ -714,7 +715,7 @@ new Autobase(store, existingKey, { ... })  // For joining existing
 **Questionable benchmarks:**
 - "<100ms move validation time" - Is this realistic for P2P sync validation?
 - "<3s peer connection establishment" - Depends heavily on network topology
-- "<50MB application size" - With Stockfish WASM this may be impossible
+- "<75MB application size" - Adjusted for native Stockfish binary inclusion
 
 #### 10. **Bare Runtime Compatibility Questions**
 
@@ -725,7 +726,7 @@ new Autobase(store, existingKey, { ... })  // For joining existing
 
 ## 📋 Open Questions Requiring Research
 
-1. **What is the exact procedure to obtain and integrate Stockfish WASM for Bare runtime?**
+1. **What is the exact procedure to create Stockfish native binding following bare-ffmpeg pattern?**
 
 2. **How does Corestore storage work within Pear app constraints?**
 
@@ -735,7 +736,7 @@ new Autobase(store, existingKey, { ... })  // For joining existing
 
 5. **How should we handle game state recovery when peers disconnect during Autobase consensus?**
 
-6. **What are realistic performance expectations for WASM Stockfish in Bare runtime?**
+6. **What are realistic performance expectations for native Stockfish binding in Bare runtime?**
 
 7. **How does the Pear update mechanism affect ongoing games stored in Autobase?**
 
@@ -753,11 +754,12 @@ new Autobase(store, existingKey, { ... })  // For joining existing
 - [ ] **Document actual Corestore storage behavior** in Pear apps
 - [ ] **Establish multi-instance testing methodology**
 
-### Priority 3: Stockfish Integration Research (Days 5-7)
-- [ ] **Source compatible Stockfish WASM builds** for Bare runtime
-- [ ] **Test WASM loading and UCI communication** in Bare environment
-- [ ] **Benchmark performance** and memory usage expectations
-- [ ] **Document integration procedure** with concrete steps
+### Priority 3: Stockfish Native Binding Development (Days 5-7)
+- [ ] **Set up CMake build environment** with cmake-bare, cmake-harden
+- [ ] **Create initial binding.cc** following bare-ffmpeg patterns
+- [ ] **Implement process-based UCI communication** wrapper
+- [ ] **Test binding compilation and loading** in Bare environment
+- [ ] **Benchmark performance** compared to external process approach
 
 ### Revised Dependencies List
 
@@ -811,11 +813,11 @@ new Autobase(store, existingKey, { ... })  // For joining existing
    - **Impact:** MAJOR REWORK REQUIRED
    - **Mitigation:** Early compatibility testing and fallback planning
 
-3. **Stockfish Integration Failure**
-   - **Risk:** Unable to integrate Stockfish WASM effectively
-   - **Probability:** MEDIUM
-   - **Impact:** CORE FEATURE LOSS
-   - **Mitigation:** Research alternatives, consider server-side fallback
+3. **Stockfish Native Binding Complexity**
+   - **Risk:** Native binding development proves too complex
+   - **Probability:** LOW
+   - **Impact:** DELAYED DELIVERY
+   - **Mitigation:** bare-ffmpeg pattern provides proven approach, fallback to external process
 
 ### SCHEDULE IMPACT
 
@@ -855,7 +857,35 @@ This project plan **cannot proceed as originally written** due to critical gaps 
 **Success Criteria for Week 0:**
 - All dependencies verified and compatible
 - Autobase multi-writer patterns proven to work
-- Stockfish integration path clearly defined
+- Stockfish native binding approach validated
 - Multi-instance testing methodology established
 
 Only after these prerequisites are met can the team proceed with confidence to Phase 1 development.
+
+---
+
+## 🔧 NATIVE STOCKFISH BINDING UPDATE (July 22, 2025)
+
+**Status:** CRITICAL ISSUE #3 RESOLVED
+
+### Solution Identified
+Analysis of bare-ffmpeg codebase reveals a clear pattern for native C++ library integration with Bare runtime that **eliminates WASM complexity** and provides **superior performance**.
+
+### Technical Approach
+1. **CMake Integration**: Use cmake-bare, cmake-harden for Bare module building
+2. **Process-Based UCI**: Start with Stockfish as managed child process
+3. **C++ Binding Layer**: Wrap process management and UCI communication
+4. **Performance Benefits**: Direct execution eliminates WASM overhead
+
+### Implementation Benefits
+- **✅ Proven Pattern**: bare-ffmpeg demonstrates this approach works
+- **✅ Better Performance**: Native execution vs WASM interpretation
+- **✅ Simplified Architecture**: No Web Worker complexity
+- **✅ Full Feature Access**: Complete Stockfish functionality available
+
+### Updated Project Risk
+- **Previous Risk**: HIGH - Unknown WASM integration path
+- **Current Risk**: LOW - Proven native binding approach available
+
+### Next Steps
+The Priority 3 research phase (Days 5-7) has been updated to focus on native binding development following the bare-ffmpeg pattern. This approach resolves the Stockfish integration uncertainty and provides a path forward for reliable implementation.

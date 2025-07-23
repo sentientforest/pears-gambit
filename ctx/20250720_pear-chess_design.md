@@ -101,7 +101,7 @@ pear-chess/
 ├── assets/
 │   ├── pieces/             # Chess piece graphics
 │   ├── sounds/             # Game sound effects
-│   └── stockfish/          # Stockfish WASM files
+│   └── stockfish/          # Stockfish native binding
 └── test/
     ├── chess.test.js       # Chess logic tests
     ├── p2p.test.js         # P2P functionality tests
@@ -216,21 +216,42 @@ swarm.join(gameKey, { client: true, server: true })
 
 #### 3. Stockfish Integration
 
-**Engine Setup**
+**Native Binding Approach**
 ```javascript
-// Load Stockfish WASM in Web Worker
-const stockfish = new Worker('./assets/stockfish/stockfish.js')
+// Load Stockfish native binding (based on bare-ffmpeg pattern)
+const StockfishEngine = require('./bare-stockfish')
 
-// Engine configuration
-stockfish.postMessage('uci')
-stockfish.postMessage('setoption name Threads value 4')
-stockfish.postMessage('setoption name Skill Level value 20')
-stockfish.postMessage('isready')
+// Create engine instance with UCI protocol support
+const stockfish = new StockfishEngine({
+  threads: 4,
+  hashSize: 256, // MB
+  skillLevel: 20
+})
+
+// Initialize engine
+await stockfish.init()
+
+// Send UCI commands
+await stockfish.uci()
+await stockfish.isready()
+
+// Analyze position
+const analysis = await stockfish.analyze({
+  fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+  depth: 20,
+  multiPV: 3 // Top 3 moves
+})
 ```
+
+**Native Binding Benefits**
+- Direct C++ execution without WASM overhead
+- Better memory management and performance
+- Access to full Stockfish features
+- Simplified UCI protocol communication
 
 **Analysis Features**
 - Real-time position evaluation
-- Best move suggestions
+- Best move suggestions with variations
 - Multi-depth analysis
 - Opening book integration
 - Endgame tablebase support
@@ -324,7 +345,8 @@ stockfish.postMessage('isready')
 - [ ] Game invitation system
 
 ### Phase 3: Stockfish Integration (Weeks 5-6)
-- [ ] Stockfish WASM integration
+- [ ] Stockfish native binding development
+- [ ] UCI protocol wrapper implementation
 - [ ] Position analysis engine
 - [ ] Move suggestion system
 - [ ] Analysis display UI
@@ -352,8 +374,8 @@ stockfish.postMessage('isready')
 **Solution**: Implement turn-based validation with timestamp ordering
 
 ### Challenge 3: Stockfish Performance
-**Problem**: WASM Stockfish may be slower than native
-**Solution**: Use Web Workers and adjustable analysis depth
+**Problem**: Engine integration needs optimal performance
+**Solution**: Native C++ bindings eliminate WASM overhead, providing direct access to Stockfish's full capabilities
 
 ### Challenge 4: Network Interruptions
 **Problem**: Game disruption from network issues
@@ -367,7 +389,7 @@ stockfish.postMessage('isready')
 
 ### Memory Management
 - Efficient chess position representation
-- Stockfish worker isolation
+- Native Stockfish engine with direct memory access
 - Hypercore block pruning for long games
 
 ### Network Efficiency
@@ -422,9 +444,61 @@ stockfish.postMessage('isready')
 ```
 
 ### AI Dependencies
-- Stockfish WASM build (included in assets)
+- Stockfish native binding (via bare-stockfish module)
 - Opening book database
 - Endgame tablebase files (optional)
+
+### Stockfish Native Binding Implementation
+
+Following the bare-ffmpeg pattern for integrating native C++ libraries with Bare runtime:
+
+**Build Dependencies**
+```json
+{
+  "cmake-bare": "^1.1.2",
+  "cmake-harden": "^1.0.2",
+  "cmake-ports": "^1.5.0"
+}
+```
+
+**CMakeLists.txt Structure**
+```cmake
+cmake_minimum_required(VERSION 3.25)
+
+find_package(cmake-bare REQUIRED PATHS node_modules/cmake-bare)
+find_package(cmake-harden REQUIRED PATHS node_modules/cmake-harden)
+
+project(bare_stockfish C CXX)
+
+# Add Stockfish source files
+add_bare_module(bare_stockfish)
+
+target_sources(
+  ${bare_stockfish}
+  PRIVATE
+    binding.cc
+    # Stockfish source files would be included here
+)
+
+target_link_libraries(
+  ${bare_stockfish}
+  PRIVATE
+    # Stockfish dependencies
+)
+
+harden(${bare_stockfish})
+```
+
+**Implementation Options**
+1. **Process-based UCI communication** (recommended for initial implementation)
+   - Spawn Stockfish as child process
+   - Communicate via UCI protocol over stdin/stdout
+   - Simpler integration with existing Stockfish binaries
+
+2. **Embedded library approach** (for advanced optimization)
+   - Compile Stockfish source directly into binding
+   - Direct function calls without process overhead
+   - Full control over engine lifecycle
 
 ### Development Dependencies
 ```json
@@ -556,9 +630,10 @@ const { teardown } = Pear
 teardown(async () => {
   console.log('Shutting down chess application...')
   
-  // 1. Close Stockfish workers
-  if (stockfishWorker) {
-    stockfishWorker.terminate()
+  // 1. Close Stockfish engine
+  if (stockfish) {
+    await stockfish.quit()
+    stockfish.destroy()
   }
   
   // 2. Leave all swarm topics
