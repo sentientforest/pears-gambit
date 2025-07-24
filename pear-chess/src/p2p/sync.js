@@ -138,8 +138,21 @@ export class GameSync {
       this.log(`Successfully joined game topic: ${this.gameId}, waiting for connection...`)
       this.notifyStateChange()
 
-      // Wait for peer connection
-      await this.swarmManager.waitForConnections(1, 30000)
+      // Check if we already have connections before waiting
+      if (this.swarmManager.hasConnections()) {
+        this.log('Already connected to peers')
+        this.gameState = 'syncing'
+        this.notifyStateChange()
+      } else {
+        // Wait for peer connection with shorter timeout
+        try {
+          await this.swarmManager.waitForConnections(1, 10000)
+          this.log('Connected to peer successfully')
+        } catch (timeoutError) {
+          this.log('Timeout waiting for connections, but continuing anyway')
+          // Don't fail - the connection might still happen
+        }
+      }
 
       return {
         success: true,
@@ -161,16 +174,28 @@ export class GameSync {
       throw new Error('Game not initialized')
     }
 
+    if (this.gameState !== 'active') {
+      throw new Error('Game not active - cannot send moves')
+    }
+
     try {
       this.log('Sending move:', move)
 
+      // Ensure move has required fields
+      const networkMove = {
+        ...move,
+        timestamp: move.timestamp || Date.now(),
+        gameId: this.gameId,
+        player: this.playerColor
+      }
+
       // Add move to local game log
-      await this.gameCore.addMove(move)
+      await this.gameCore.addMove(networkMove)
 
       // Broadcast move to connected peers
       const message = {
         type: 'move',
-        move: move,
+        move: networkMove,
         gameId: this.gameId,
         timestamp: Date.now()
       }
@@ -214,6 +239,9 @@ export class GameSync {
   async handlePeerConnection(socket, info, peerId) {
     this.log(`Peer connected: ${peerId}`)
 
+    // Store remote player ID
+    this.remotePlayerId = peerId
+
     // Send game handshake
     const handshake = {
       type: 'handshake',
@@ -230,6 +258,16 @@ export class GameSync {
     if (this.gameState === 'waiting' || this.gameState === 'connecting') {
       this.gameState = 'syncing'
       this.notifyStateChange()
+      
+      // For guests, transition to active state immediately if no game state to sync
+      if (!this.isHost) {
+        setTimeout(() => {
+          if (this.gameState === 'syncing') {
+            this.gameState = 'active'
+            this.notifyStateChange()
+          }
+        }, 1000) // Give time for any initial sync
+      }
     }
 
     this.onConnectionChange(peerId, 'connected')
@@ -299,16 +337,32 @@ export class GameSync {
 
     // Add remote player as writer
     if (message.gameId === this.gameId) {
-      // Request current game state if we're not the host
-      if (!this.isHost) {
+      // For new games, transition to active immediately
+      if (this.isHost && this.gameState === 'syncing') {
+        this.gameState = 'active'
+        this.notifyStateChange()
+        
+        // Send sync complete to guest
         this.swarmManager.sendToPeer(peerId, {
-          type: 'game_state_request',
+          type: 'sync_complete',
           gameId: this.gameId,
           timestamp: Date.now()
         })
-      } else {
-        // Host sends current game state
-        await this.sendGameState(peerId)
+      } else if (!this.isHost) {
+        // Guest requests game state or acknowledges if new game
+        const moves = await this.gameCore.getMoves()
+        if (moves.length === 0) {
+          // New game - just sync complete
+          this.gameState = 'active'
+          this.notifyStateChange()
+        } else {
+          // Existing game - request state
+          this.swarmManager.sendToPeer(peerId, {
+            type: 'game_state_request',
+            gameId: this.gameId,
+            timestamp: Date.now()
+          })
+        }
       }
     }
   }

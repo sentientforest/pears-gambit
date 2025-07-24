@@ -280,10 +280,23 @@ export class GameView {
   async sendMoveToOpponent(move) {
     try {
       console.log('Sending move to opponent:', move)
+      
+      // Check if P2P is ready
+      if (!this.p2pSession.gameSync.isReadyForMoves()) {
+        console.warn('P2P not ready for moves yet, move not sent')
+        this.showError('Waiting for connection to stabilize...')
+        return
+      }
+      
       await this.p2pSession.gameSync.sendMove(move)
+      console.log('Move sent successfully')
     } catch (error) {
       console.error('Failed to send move:', error)
-      this.showError('Failed to send move to opponent')
+      if (error.message.includes('not active')) {
+        this.showError('Game connection not ready yet. Please wait...')
+      } else {
+        this.showError('Failed to send move to opponent: ' + error.message)
+      }
     }
   }
 
