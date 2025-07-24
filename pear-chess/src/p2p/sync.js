@@ -84,7 +84,7 @@ export class GameSync {
   /**
    * Create a new game (host)
    */
-  async createGame(chessGame) {
+  async createGame(chessGame, invitation) {
     try {
       this.log('Creating new game as host')
       
@@ -93,20 +93,20 @@ export class GameSync {
       this.playerColor = 'white' // Host plays white
       this.gameState = 'waiting'
 
-      // Create game topic
-      const { key: gameKey, inviteCode } = this.swarmManager.createGameTopic()
+      // Use the game key from the discovery invitation
+      const gameKey = Buffer.from(invitation.gameKey, 'hex')
       this.gameId = gameKey.toString('hex')
 
       // Join the topic as server
       await this.swarmManager.joinTopic(gameKey, { client: true, server: true })
 
-      this.log(`Game created with invite code: ${inviteCode}`)
+      this.log(`Game created with invite code: ${invitation.inviteCode}, topic: ${this.gameId}`)
       this.notifyStateChange()
 
       return {
         success: true,
         gameId: this.gameId,
-        inviteCode,
+        inviteCode: invitation.inviteCode,
         playerColor: this.playerColor
       }
     } catch (error) {
@@ -119,7 +119,7 @@ export class GameSync {
   /**
    * Join an existing game (guest)
    */
-  async joinGame(inviteCode, chessGame) {
+  async joinGame(inviteCode, chessGame, joinInfo) {
     try {
       this.log(`Joining game with invite code: ${inviteCode}`)
       
@@ -128,16 +128,14 @@ export class GameSync {
       this.playerColor = 'black' // Guest plays black
       this.gameState = 'connecting'
 
-      // Join the game topic
-      const result = await this.swarmManager.joinGame(inviteCode, { client: true, server: false })
-      
-      if (!result.success) {
-        throw new Error(result.error)
-      }
+      // Use the game key from discovery join info
+      const gameKey = joinInfo.gameKey
+      this.gameId = gameKey.toString('hex')
 
-      this.gameId = result.gameKey.toString('hex')
+      // Join the topic directly with the game key
+      await this.swarmManager.joinTopic(gameKey, { client: true, server: false })
 
-      this.log('Successfully joined game, waiting for connection...')
+      this.log(`Successfully joined game topic: ${this.gameId}, waiting for connection...`)
       this.notifyStateChange()
 
       // Wait for peer connection

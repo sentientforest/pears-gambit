@@ -322,8 +322,8 @@ export class GameCore {
 
     try {
       const writers = []
-      // Get writers from the activeWriters instance
-      for (const writer of this.gameBase.activeWriters.all()) {
+      // Get writers from the activeWriters instance using the iterator
+      for (const writer of this.gameBase.activeWriters) {
         writers.push({
           key: writer.core.key.toString('hex'),
           length: writer.length,

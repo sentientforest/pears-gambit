@@ -204,30 +204,6 @@ export class SwarmManager {
     this.joinedTopics.delete(topicHex)
   }
 
-  /**
-   * Create a new game topic
-   */
-  createGameTopic() {
-    const gameKey = hypercoreCrypto.randomBytes(32)
-    return {
-      key: gameKey,
-      inviteCode: gameKey.toString('hex')
-    }
-  }
-
-  /**
-   * Join game by invite code
-   */
-  async joinGame(inviteCode, options = {}) {
-    try {
-      const gameKey = b4a.from(inviteCode, 'hex')
-      await this.joinTopic(gameKey, options)
-      return { success: true, gameKey }
-    } catch (error) {
-      this.log('Failed to join game:', error)
-      return { success: false, error: error.message }
-    }
-  }
 
   /**
    * Send message to specific peer
