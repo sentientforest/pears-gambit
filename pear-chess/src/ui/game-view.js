@@ -51,6 +51,7 @@ export class GameView {
    * Initialize the game view
    */
   init() {
+    console.log('[GameView] Initializing game view for player:', this.playerColor)
     this.createLayout()
     this.createChessBoard()
     this.createControls()
@@ -60,6 +61,7 @@ export class GameView {
     
     // Start a new game
     this.newGame()
+    console.log('[GameView] Game view initialized')
   }
 
   /**
@@ -116,6 +118,7 @@ export class GameView {
    * Create the chess board component
    */
   createChessBoard() {
+    console.log('[GameView] Creating chess board component')
     this.chessBoard = new ChessBoardComponent('chess-board-container', {
       size: 480,
       coordinates: true,
@@ -124,6 +127,7 @@ export class GameView {
       onSquareClick: this.handleSquareClick.bind(this),
       onPieceSelect: this.handlePieceSelect.bind(this)
     })
+    console.log('[GameView] Chess board component created:', this.chessBoard)
   }
 
   /**
@@ -407,12 +411,16 @@ export class GameView {
    * Handle move from chess board
    */
   handleMove(move) {
-    if (this.gameState !== 'active') return
-
-    console.log('Attempting move:', move)
+    console.log('handleMove called:', move, 'gameState:', this.gameState, 'turn:', this.game.getTurn(), 'playerColor:', this.playerColor)
+    
+    if (this.gameState !== 'active') {
+      console.log('Game not active, ignoring move')
+      return
+    }
     
     // In P2P mode, check if it's our turn
     if (this.p2pSession && this.playerColor !== this.game.getTurn()) {
+      console.log('Not player turn:', this.playerColor, '!==', this.game.getTurn())
       this.showError("It's not your turn")
       return
     }
@@ -438,7 +446,7 @@ export class GameView {
    * Handle square click
    */
   handleSquareClick(square) {
-    console.log('Square clicked:', square)
+    console.log('Square clicked:', square, 'gameState:', this.gameState, 'piece:', this.chessBoard.boardState[square])
   }
 
   /**
