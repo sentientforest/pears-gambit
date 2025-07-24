@@ -312,12 +312,32 @@ export class GameView {
       return
     }
     
+    // Extract just the fields needed for makeMove
+    const chessMove = {
+      from: move.from,
+      to: move.to
+    }
+    
+    // Add promotion if present
+    if (move.promotion) {
+      chessMove.promotion = move.promotion
+    }
+    
     // Apply the move to our local game
-    const result = this.game.makeMove(move)
+    const result = this.game.makeMove(chessMove)
     
     if (result.success) {
-      console.log('Remote move applied successfully')
+      console.log('Remote move applied successfully:', result)
       this.updateDisplay()
+      
+      // Force board update
+      const boardState = chessBoard.parseBoardArray(this.game.getBoard())
+      this.chessBoard.updateBoard(boardState)
+      
+      // Highlight the move
+      if (move.from && move.to) {
+        this.chessBoard.highlightLastMove(move.from, move.to)
+      }
     } else {
       console.error('Failed to apply remote move:', result.error)
       this.showError('Sync error: Failed to apply opponent move')

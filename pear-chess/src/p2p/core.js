@@ -111,6 +111,7 @@ export class GameCore {
    * Apply moves to the view - required by Autobase
    */
   async applyMoves(nodes, view, base) {
+    this.log(`applyMoves called with ${nodes.length} nodes`)
     for (const node of nodes) {
       this.log('Applying move node:', node)
       
@@ -191,7 +192,8 @@ export class GameCore {
     // Timestamp validation (within reasonable bounds)
     const now = Date.now()
     const moveTime = move.timestamp
-    if (moveTime > now + 5000 || moveTime < now - 300000) { // 5s future, 5m past
+    // Allow 30 seconds in the future (clock drift) and 10 minutes in the past
+    if (moveTime > now + 30000 || moveTime < now - 600000) { // 30s future, 10m past
       this.log('Invalid timestamp:', moveTime, 'current:', now)
       return false
     }
@@ -208,6 +210,11 @@ export class GameCore {
     }
 
     try {
+      // Validate move object
+      if (!move || typeof move !== 'object') {
+        throw new Error('Invalid move object: ' + JSON.stringify(move))
+      }
+
       // Ensure move has timestamp
       if (!move.timestamp) {
         move.timestamp = Date.now()
@@ -216,7 +223,7 @@ export class GameCore {
       // Add game ID for tracking
       move.gameId = this.gameId
 
-      this.log('Adding move to game log:', move)
+      this.log('Adding move to game log:', JSON.stringify(move))
       
       // Append to local input
       await this.gameBase.append(move)
@@ -224,7 +231,7 @@ export class GameCore {
       this.log('Move added successfully')
       return true
     } catch (error) {
-      this.log('Failed to add move:', error)
+      this.log('Failed to add move:', error, 'Move was:', move)
       this.onError(error)
       throw error
     }

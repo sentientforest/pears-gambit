@@ -178,16 +178,34 @@ export class GameSync {
       throw new Error('Game not active - cannot send moves')
     }
 
-    try {
-      this.log('Sending move:', move)
+    // Ensure game core is ready
+    await this.gameCore.ready()
 
-      // Ensure move has required fields
+    try {
+      this.log('Sending move:', JSON.stringify(move))
+
+      // Create a clean network move object with all required fields
       const networkMove = {
-        ...move,
         timestamp: move.timestamp || Date.now(),
-        gameId: this.gameId,
-        player: this.playerColor
+        player: move.player || this.playerColor,
+        from: move.from,
+        to: move.to,
+        piece: move.piece,
+        captured: move.captured || null,
+        promotion: move.promotion || null,
+        check: move.check || false,
+        checkmate: move.checkmate || false,
+        fen: move.fen,
+        san: move.san,
+        gameId: this.gameId
       }
+
+      // Validate required fields
+      if (!networkMove.from || !networkMove.to || !networkMove.piece) {
+        throw new Error('Move missing required fields: from, to, or piece')
+      }
+
+      this.log('Network move to be sent:', JSON.stringify(networkMove))
 
       // Add move to local game log
       await this.gameCore.addMove(networkMove)
@@ -376,9 +394,26 @@ export class GameSync {
       return
     }
 
-    // The move will be handled by the core's move handler
-    // We just acknowledge receipt
     this.log('Move received from peer:', message.move)
+    
+    // Don't process our own moves
+    if (message.move.player === this.playerColor) {
+      this.log('Ignoring our own move echoed back')
+      return
+    }
+
+    // Directly notify the UI about the remote move
+    // The move will also be synced via Autobase replication
+    this.onMoveReceived(message.move)
+    
+    // Also add to Autobase for persistence
+    try {
+      await this.gameCore.addMove(message.move)
+      this.log('Remote move added to game core')
+    } catch (error) {
+      this.log('Failed to add remote move to core:', error)
+      // Continue anyway since we already notified the UI
+    }
   }
 
   /**

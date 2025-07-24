@@ -9,34 +9,55 @@ import { Chess } from 'chess.js'
 import cenc from 'compact-encoding'
 
 // Custom encoding for chess moves (efficient P2P transmission)
-export const moveEncoding = cenc.from({
-  encode: (state, move) => {
-    cenc.uint32.encode(state, move.timestamp || Date.now())
+export const moveEncoding = {
+  preencode(state, move) {
+    if (!move) {
+      throw new Error('Cannot preencode undefined move')
+    }
+    cenc.uint64.preencode(state, move.timestamp || Date.now())
+    cenc.uint8.preencode(state, move.player === 'white' ? 0 : 1)
+    cenc.string.preencode(state, move.from || '')
+    cenc.string.preencode(state, move.to || '')
+    cenc.string.preencode(state, move.piece || '')
+    cenc.string.preencode(state, move.captured || '')
+    cenc.string.preencode(state, move.promotion || '')
+    cenc.bool.preencode(state, move.check || false)
+    cenc.bool.preencode(state, move.checkmate || false)
+    cenc.string.preencode(state, move.fen || '')
+    cenc.string.preencode(state, move.san || '')
+  },
+  encode(state, move) {
+    if (!move) {
+      throw new Error('Cannot encode undefined move')
+    }
+    cenc.uint64.encode(state, move.timestamp || Date.now())
     cenc.uint8.encode(state, move.player === 'white' ? 0 : 1)
-    cenc.string.encode(state, move.from)
-    cenc.string.encode(state, move.to)
-    cenc.string.encode(state, move.piece)
+    cenc.string.encode(state, move.from || '')
+    cenc.string.encode(state, move.to || '')
+    cenc.string.encode(state, move.piece || '')
     cenc.string.encode(state, move.captured || '')
     cenc.string.encode(state, move.promotion || '')
     cenc.bool.encode(state, move.check || false)
     cenc.bool.encode(state, move.checkmate || false)
-    cenc.string.encode(state, move.fen)
-    cenc.string.encode(state, move.san) // Standard Algebraic Notation
+    cenc.string.encode(state, move.fen || '')
+    cenc.string.encode(state, move.san || '')
   },
-  decode: (state) => ({
-    timestamp: cenc.uint32.decode(state),
-    player: cenc.uint8.decode(state) === 0 ? 'white' : 'black',
-    from: cenc.string.decode(state),
-    to: cenc.string.decode(state),
-    piece: cenc.string.decode(state),
-    captured: cenc.string.decode(state) || null,
-    promotion: cenc.string.decode(state) || null,
-    check: cenc.bool.decode(state),
-    checkmate: cenc.bool.decode(state),
-    fen: cenc.string.decode(state),
-    san: cenc.string.decode(state)
-  })
-})
+  decode(state) {
+    return {
+      timestamp: cenc.uint64.decode(state),
+      player: cenc.uint8.decode(state) === 0 ? 'white' : 'black',
+      from: cenc.string.decode(state),
+      to: cenc.string.decode(state),
+      piece: cenc.string.decode(state),
+      captured: cenc.string.decode(state) || null,
+      promotion: cenc.string.decode(state) || null,
+      check: cenc.bool.decode(state),
+      checkmate: cenc.bool.decode(state),
+      fen: cenc.string.decode(state),
+      san: cenc.string.decode(state)
+    }
+  }
+}
 
 /**
  * Chess Game Controller
