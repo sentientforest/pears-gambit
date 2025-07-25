@@ -136,17 +136,29 @@ export class GameView {
   createControls() {
     if (!this.controlsContainer) return
 
-    const controls = [
-      { id: 'new-game', text: 'New Game', onClick: () => this.newGame() },
-      { id: 'flip-board', text: 'Flip Board', onClick: () => this.flipBoard() },
-      { id: 'export-pgn', text: 'Export PGN', onClick: () => this.exportPgn() }
-    ]
+    // Different controls based on game mode
+    let controls
+    if (this.p2pSession && this.gameState === 'active') {
+      // P2P game controls - replace New Game with Resign
+      controls = [
+        { id: 'resign-game', text: 'Resign', onClick: () => this.resignGame(), className: 'resign-button' },
+        { id: 'flip-board', text: 'Flip Board', onClick: () => this.flipBoard() },
+        { id: 'export-pgn', text: 'Export PGN', onClick: () => this.exportPgn() }
+      ]
+    } else {
+      // Single player or inactive game controls
+      controls = [
+        { id: 'new-game', text: 'New Game', onClick: () => this.newGame() },
+        { id: 'flip-board', text: 'Flip Board', onClick: () => this.flipBoard() },
+        { id: 'export-pgn', text: 'Export PGN', onClick: () => this.exportPgn() }
+      ]
+    }
 
     controls.forEach(control => {
       const button = document.createElement('button')
       button.id = control.id
       button.textContent = control.text
-      button.className = 'control-button'
+      button.className = control.className || 'control-button'
       button.addEventListener('click', control.onClick)
       this.controlsContainer.appendChild(button)
     })
@@ -245,6 +257,10 @@ export class GameView {
     if (this.playerColor === 'black') {
       this.chessBoard.flip()
     }
+    
+    // Recreate controls with appropriate buttons for the current game state
+    this.controlsContainer.innerHTML = ''
+    this.createControls()
   }
 
   /**
@@ -608,6 +624,8 @@ export class GameView {
       switch (gameInfo.result.result) {
         case 'checkmate':
           return `Checkmate - ${gameInfo.result.winner} wins`
+        case 'resignation':
+          return `Resignation - ${gameInfo.result.winner} wins`
         case 'stalemate':
           return 'Stalemate - Draw'
         case 'draw':
@@ -667,6 +685,66 @@ export class GameView {
 
     // Scroll to bottom
     historyList.scrollTop = historyList.scrollHeight
+  }
+
+  /**
+   * Resign the game
+   */
+  resignGame() {
+    if (this.gameState !== 'active') {
+      console.log('Cannot resign - game not active')
+      return
+    }
+
+    // Show confirmation dialog
+    const confirmed = confirm('Are you sure you want to resign? This will end the game in a loss.')
+    if (!confirmed) {
+      return
+    }
+
+    console.log('Player resigned the game')
+    
+    // Create resignation result
+    const resignationResult = {
+      result: 'resignation',
+      winner: this.playerColor === 'white' ? 'black' : 'white', // Opponent wins
+      loser: this.playerColor,
+      method: 'resignation',
+      timestamp: Date.now()
+    }
+
+    // Update local game state
+    this.gameState = 'finished'
+    
+    // Send resignation to opponent if P2P
+    if (this.p2pSession && this.gameSession) {
+      this.sendResignationToOpponent(resignationResult)
+    }
+    
+    // Show game result
+    this.showGameResult(resignationResult)
+    this.updateDisplay()
+  }
+
+  /**
+   * Send resignation notification to opponent
+   */
+  async sendResignationToOpponent(result) {
+    try {
+      if (this.p2pSession.gameSync.isReadyForMoves()) {
+        const resignationMessage = {
+          type: 'game_end',
+          result: result,
+          gameId: this.gameSession.gameId,
+          timestamp: Date.now()
+        }
+        
+        await this.p2pSession.gameSync.swarmManager.broadcast(resignationMessage)
+        console.log('Resignation notification sent to opponent')
+      }
+    } catch (error) {
+      console.error('Failed to send resignation notification:', error)
+    }
   }
 
   /**
@@ -747,6 +825,19 @@ export class GameView {
           message = isWin ? 'You won by checkmate!' : 'You lost by checkmate!'
         } else {
           message = `${result.winner} wins by checkmate!`
+        }
+        break
+      case 'resignation':
+        if (this.p2pSession) {
+          // In P2P mode, show personal result
+          isWin = (result.winner === this.playerColor)
+          if (fromOpponent) {
+            message = isWin ? 'Your opponent resigned. You win!' : 'You resigned. You lose!'
+          } else {
+            message = isWin ? 'Your opponent resigned. You win!' : 'You resigned. You lose!'
+          }
+        } else {
+          message = `${result.winner} wins by resignation!`
         }
         break
       case 'stalemate':
@@ -977,6 +1068,25 @@ export class GameView {
       
       .control-button:active {
         background-color: #004080;
+      }
+      
+      .resign-button {
+        padding: 10px 15px;
+        border: none;
+        border-radius: 4px;
+        background-color: #dc3545;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background-color 0.2s;
+      }
+      
+      .resign-button:hover {
+        background-color: #c82333;
+      }
+      
+      .resign-button:active {
+        background-color: #bd2130;
       }
       
       .move-history {
