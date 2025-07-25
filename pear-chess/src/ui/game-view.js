@@ -276,6 +276,11 @@ export class GameView {
       console.error('P2P error:', error)
       this.showError('Network error: ' + error.message)
     }
+
+    // Handle game end from opponent
+    this.p2pSession.gameSync.onGameEnd = (result) => {
+      this.handleOpponentGameEnd(result)
+    }
   }
 
   /**
@@ -475,8 +480,37 @@ export class GameView {
   onGameEnd(result) {
     console.log('Game ended:', result)
     this.gameState = 'finished'
+    
+    // Notify P2P session about game end
+    if (this.p2pSession && this.gameSession) {
+      this.sendGameEndToOpponent(result)
+    }
+    
     this.showGameResult(result)
     this.updateDisplay()
+  }
+
+  /**
+   * Send game end notification to opponent
+   */
+  async sendGameEndToOpponent(result) {
+    try {
+      if (this.p2pSession.gameSync.isReadyForMoves()) {
+        // Send game end as a special message
+        const gameEndMessage = {
+          type: 'game_end',
+          result: result,
+          gameId: this.gameSession.gameId,
+          timestamp: Date.now()
+        }
+        
+        // Send via P2P sync
+        await this.p2pSession.gameSync.swarmManager.broadcast(gameEndMessage)
+        console.log('Game end notification sent to opponent')
+      }
+    } catch (error) {
+      console.error('Failed to send game end notification:', error)
+    }
   }
 
   /**
@@ -689,32 +723,135 @@ export class GameView {
   }
 
   /**
+   * Handle game end from opponent
+   */
+  handleOpponentGameEnd(result) {
+    console.log('Opponent game end received:', result)
+    this.gameState = 'finished'
+    this.showGameResult(result, true)
+    this.updateDisplay()
+  }
+
+  /**
    * Show game result
    */
-  showGameResult(result) {
-    let message = 'Game Over!\n'
+  showGameResult(result, fromOpponent = false) {
+    let title = 'Game Over!'
+    let message = ''
+    let isWin = false
     
     switch (result.result) {
       case 'checkmate':
-        message += `${result.winner} wins by checkmate!`
+        if (this.p2pSession) {
+          // In P2P mode, show personal result
+          isWin = (result.winner === this.playerColor)
+          message = isWin ? 'You won by checkmate!' : 'You lost by checkmate!'
+        } else {
+          message = `${result.winner} wins by checkmate!`
+        }
         break
       case 'stalemate':
-        message += 'Draw by stalemate!'
+        message = 'Draw by stalemate!'
         break
       case 'draw':
-        message += 'Draw!'
+        message = 'Draw!'
         break
       case 'threefold_repetition':
-        message += 'Draw by threefold repetition!'
+        message = 'Draw by threefold repetition!'
         break
       case 'insufficient_material':
-        message += 'Draw by insufficient material!'
+        message = 'Draw by insufficient material!'
         break
       default:
-        message += 'Game finished!'
+        message = 'Game finished!'
     }
     
-    setTimeout(() => alert(message), 100)
+    // Create a more sophisticated modal instead of alert
+    this.showGameEndModal(title, message, isWin, fromOpponent)
+  }
+
+  /**
+   * Show game end modal
+   */
+  showGameEndModal(title, message, isWin, fromOpponent) {
+    // Create modal backdrop
+    const backdrop = document.createElement('div')
+    backdrop.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `
+    
+    // Create modal content
+    const modal = document.createElement('div')
+    modal.style.cssText = `
+      background-color: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      text-align: center;
+      max-width: 400px;
+      min-width: 300px;
+    `
+    
+    const titleElement = document.createElement('h2')
+    titleElement.textContent = title
+    titleElement.style.color = isWin ? '#28a745' : (isWin === false && title === 'Game Over!' ? '#dc3545' : '#333')
+    titleElement.style.marginTop = '0'
+    
+    const messageElement = document.createElement('p')
+    messageElement.textContent = message
+    messageElement.style.fontSize = '18px'
+    messageElement.style.margin = '20px 0'
+    
+    const buttonContainer = document.createElement('div')
+    buttonContainer.style.cssText = `
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 20px;
+    `
+    
+    const newGameButton = document.createElement('button')
+    newGameButton.textContent = 'Return to Lobby'
+    newGameButton.style.cssText = `
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+    `
+    
+    newGameButton.onclick = () => {
+      backdrop.remove()
+      // Return to lobby logic would go here
+      if (typeof window.pearsGambit !== 'undefined') {
+        window.pearsGambit.returnToLobby()
+      }
+    }
+    
+    buttonContainer.appendChild(newGameButton)
+    modal.appendChild(titleElement)
+    modal.appendChild(messageElement)
+    modal.appendChild(buttonContainer)
+    backdrop.appendChild(modal)
+    document.body.appendChild(backdrop)
+    
+    // Remove modal when clicking backdrop
+    backdrop.onclick = (e) => {
+      if (e.target === backdrop) {
+        backdrop.remove()
+      }
+    }
   }
 
   /**
