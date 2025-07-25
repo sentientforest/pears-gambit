@@ -13,6 +13,7 @@ export class ChessBoardComponent {
   constructor(containerId, options = {}) {
     this.containerId = containerId
     this.container = document.getElementById(containerId)
+    console.log('[ChessBoard] Initializing with container:', containerId, 'found:', !!this.container)
     if (!this.container) {
       throw new Error(`Container element with id "${containerId}" not found`)
     }
@@ -47,9 +48,16 @@ export class ChessBoardComponent {
    * Initialize the chess board
    */
   init() {
+    console.log('[ChessBoard] Starting initialization')
     this.createBoard()
-    this.bindEvents()
+    
+    // Delay event binding to ensure DOM is ready
+    setTimeout(() => {
+      this.bindEvents()
+    }, 100)
+    
     this.updateStyles()
+    console.log('[ChessBoard] Initialization complete')
   }
 
   /**
@@ -82,8 +90,10 @@ export class ChessBoardComponent {
       this.addCoordinates(wrapper)
     }
     
+    wrapper.appendChild(boardElement)
     this.container.appendChild(wrapper)
     this.boardElement = boardElement
+    console.log('[ChessBoard] Board structure created and appended to DOM')
   }
 
   /**
@@ -133,17 +143,38 @@ export class ChessBoardComponent {
    * Bind event handlers
    */
   bindEvents() {
-    if (!this.options.draggable) return
-
-    this.boardElement.addEventListener('mousedown', this.handleMouseDown.bind(this))
-    this.boardElement.addEventListener('mousemove', this.handleMouseMove.bind(this))
-    this.boardElement.addEventListener('mouseup', this.handleMouseUp.bind(this))
+    console.log('[ChessBoard] Binding events, draggable:', this.options.draggable)
+    console.log('[ChessBoard] Board element for events:', this.boardElement)
+    
+    if (!this.boardElement) {
+      console.error('[ChessBoard] No boardElement to bind events to!')
+      return
+    }
+    
+    // Test if element is in DOM
+    console.log('[ChessBoard] Board element in DOM:', document.contains(this.boardElement))
+    
+    // Always bind click events for piece selection
     this.boardElement.addEventListener('click', this.handleClick.bind(this))
     
-    // Touch events for mobile
-    this.boardElement.addEventListener('touchstart', this.handleTouchStart.bind(this))
-    this.boardElement.addEventListener('touchmove', this.handleTouchMove.bind(this))
-    this.boardElement.addEventListener('touchend', this.handleTouchEnd.bind(this))
+    // Add a test event to make sure it's working
+    this.boardElement.addEventListener('mouseenter', () => {
+      console.log('[ChessBoard] Mouse entered board - events are working!')
+    })
+    
+    // Only bind drag events if draggable is enabled
+    if (this.options.draggable) {
+      this.boardElement.addEventListener('mousedown', this.handleMouseDown.bind(this))
+      this.boardElement.addEventListener('mousemove', this.handleMouseMove.bind(this))
+      this.boardElement.addEventListener('mouseup', this.handleMouseUp.bind(this))
+      
+      // Touch events for mobile
+      this.boardElement.addEventListener('touchstart', this.handleTouchStart.bind(this))
+      this.boardElement.addEventListener('touchmove', this.handleTouchMove.bind(this))
+      this.boardElement.addEventListener('touchend', this.handleTouchEnd.bind(this))
+    }
+    
+    console.log('[ChessBoard] Events bound successfully')
   }
 
   /**
@@ -185,10 +216,25 @@ export class ChessBoardComponent {
    * Handle click events
    */
   handleClick(event) {
+    console.log('[ChessBoard] Click event received:', event)
     const square = this.getSquareFromEvent(event)
+    console.log('[ChessBoard] Square from event:', square)
     if (!square) return
 
     this.onSquareClick(square)
+
+    // If we have a selected piece and clicked on a different square, try to move
+    if (this.selectedSquare && this.selectedSquare !== square) {
+      // Check if this is a legal move
+      if (this.legalMoves.includes(square)) {
+        this.onMove({
+          from: this.selectedSquare,
+          to: square
+        })
+        this.clearSelection()
+        return
+      }
+    }
 
     // Handle piece selection
     if (this.selectedSquare === square) {
