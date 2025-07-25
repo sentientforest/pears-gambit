@@ -139,7 +139,6 @@ export class GameView {
     const controls = [
       { id: 'new-game', text: 'New Game', onClick: () => this.newGame() },
       { id: 'flip-board', text: 'Flip Board', onClick: () => this.flipBoard() },
-      { id: 'undo-move', text: 'Undo', onClick: () => this.undoMove() },
       { id: 'export-pgn', text: 'Export PGN', onClick: () => this.exportPgn() }
     ]
 
