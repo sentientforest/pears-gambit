@@ -187,6 +187,9 @@ export class ChessBoardComponent {
     // Test if element is in DOM
     console.log('[ChessBoard] Board element in DOM:', document.contains(this.boardElement))
     
+    // Clean up any existing drag artifacts before binding
+    this.cleanupDragArtifacts()
+    
     // Always bind click events for piece selection
     this.boardElement.addEventListener('click', this.handleClick.bind(this))
     
@@ -205,6 +208,13 @@ export class ChessBoardComponent {
       this.boardElement.addEventListener('touchstart', this.handleTouchStart.bind(this))
       this.boardElement.addEventListener('touchmove', this.handleTouchMove.bind(this))
       this.boardElement.addEventListener('touchend', this.handleTouchEnd.bind(this))
+      
+      // Global mouse up to catch drags that end outside the board
+      document.addEventListener('mouseup', (event) => {
+        if (this.draggedPiece) {
+          this.completeDrag(null) // Complete drag without move
+        }
+      })
     }
     
     console.log('[ChessBoard] Events bound successfully')
@@ -215,6 +225,10 @@ export class ChessBoardComponent {
    */
   handleMouseDown(event) {
     event.preventDefault()
+    
+    // Clean up any existing drag operations first
+    this.cleanupDragArtifacts()
+    
     const square = this.getSquareFromEvent(event)
     if (!square) return
 
@@ -294,6 +308,11 @@ export class ChessBoardComponent {
   handleTouchEnd(event) {
     if (event.changedTouches.length !== 1) return
     this.handleMouseUp(event.changedTouches[0])
+    
+    // Additional cleanup for touch events
+    setTimeout(() => {
+      this.cleanupDragArtifacts()
+    }, 100)
   }
 
   /**
@@ -357,8 +376,10 @@ export class ChessBoardComponent {
     
     const fromSquare = this.draggedPiece.square
     
-    // Remove drag element
-    document.body.removeChild(this.draggedPiece.element)
+    // Remove drag element safely
+    if (this.draggedPiece.element && this.draggedPiece.element.parentNode) {
+      this.draggedPiece.element.parentNode.removeChild(this.draggedPiece.element)
+    }
     this.draggedPiece = null
     
     // Attempt move
@@ -374,12 +395,13 @@ export class ChessBoardComponent {
    */
   createDragElement(piece) {
     const element = document.createElement('div')
-    element.className = 'drag-piece'
+    element.className = 'drag-piece chess-drag-piece' // Add unique class for cleanup
     element.textContent = chessBoard.getPieceSymbol(piece.type, piece.color)
     element.style.position = 'fixed'
     element.style.pointerEvents = 'none'
     element.style.fontSize = '40px'
     element.style.zIndex = '1000'
+    element.style.userSelect = 'none'
     return element
   }
 
@@ -479,6 +501,9 @@ export class ChessBoardComponent {
    * Update board state
    */
   updateBoard(boardState) {
+    // Clean up any drag artifacts before updating
+    this.cleanupDragArtifacts()
+    
     this.boardState = boardState
     this.renderPieces()
   }
@@ -685,6 +710,9 @@ export class ChessBoardComponent {
    * Flip the board
    */
   flip() {
+    // Clean up any drag operations and artifacts first
+    this.cleanupDragArtifacts()
+    
     this.options.flipped = !this.options.flipped
     this.createBoard()
     
@@ -707,12 +735,30 @@ export class ChessBoardComponent {
   }
 
   /**
+   * Clean up drag artifacts
+   */
+  cleanupDragArtifacts() {
+    // Clean up any leftover drag elements with our unique class
+    document.querySelectorAll('.chess-drag-piece').forEach(element => {
+      if (element.parentNode) {
+        element.parentNode.removeChild(element)
+      }
+    })
+    
+    // Clean up current drag state
+    if (this.draggedPiece) {
+      if (this.draggedPiece.element && this.draggedPiece.element.parentNode) {
+        this.draggedPiece.element.parentNode.removeChild(this.draggedPiece.element)
+      }
+      this.draggedPiece = null
+    }
+  }
+
+  /**
    * Destroy the component
    */
   destroy() {
-    if (this.draggedPiece && this.draggedPiece.element.parentNode) {
-      this.draggedPiece.element.parentNode.removeChild(this.draggedPiece.element)
-    }
+    this.cleanupDragArtifacts()
     this.container.innerHTML = ''
   }
 }
