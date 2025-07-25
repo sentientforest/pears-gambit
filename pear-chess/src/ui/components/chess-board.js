@@ -75,15 +75,26 @@ export class ChessBoardComponent {
     const boardElement = document.createElement('div')
     boardElement.className = 'board-squares'
     
-    for (let rank = 7; rank >= 0; rank--) {
-      for (let file = 0; file < 8; file++) {
-        const square = chessBoard.indicesToSquare(file, rank)
-        const squareElement = this.createSquareElement(square, file, rank)
-        boardElement.appendChild(squareElement)
+    // Create squares - handle flipped orientation
+    if (this.options.flipped) {
+      // When flipped, start from rank 0 and go up
+      for (let rank = 0; rank <= 7; rank++) {
+        for (let file = 7; file >= 0; file--) {
+          const square = chessBoard.indicesToSquare(file, rank)
+          const squareElement = this.createSquareElement(square, file, rank)
+          boardElement.appendChild(squareElement)
+        }
+      }
+    } else {
+      // Normal orientation - white on bottom
+      for (let rank = 7; rank >= 0; rank--) {
+        for (let file = 0; file < 8; file++) {
+          const square = chessBoard.indicesToSquare(file, rank)
+          const squareElement = this.createSquareElement(square, file, rank)
+          boardElement.appendChild(squareElement)
+        }
       }
     }
-    
-    wrapper.appendChild(boardElement)
     
     // Add coordinates if enabled
     if (this.options.coordinates) {
@@ -117,22 +128,44 @@ export class ChessBoardComponent {
     const fileLabels = document.createElement('div')
     fileLabels.className = 'file-labels'
     
-    for (let file = 0; file < 8; file++) {
-      const label = document.createElement('div')
-      label.className = 'file-label'
-      label.textContent = chessBoard.files[file]
-      fileLabels.appendChild(label)
+    if (this.options.flipped) {
+      // When flipped, files go from h to a
+      for (let file = 7; file >= 0; file--) {
+        const label = document.createElement('div')
+        label.className = 'file-label'
+        label.textContent = chessBoard.files[file]
+        fileLabels.appendChild(label)
+      }
+    } else {
+      // Normal orientation: a to h
+      for (let file = 0; file < 8; file++) {
+        const label = document.createElement('div')
+        label.className = 'file-label'
+        label.textContent = chessBoard.files[file]
+        fileLabels.appendChild(label)
+      }
     }
     
     // Rank labels (1-8)
     const rankLabels = document.createElement('div')
     rankLabels.className = 'rank-labels'
     
-    for (let rank = 7; rank >= 0; rank--) {
-      const label = document.createElement('div')
-      label.className = 'rank-label'
-      label.textContent = rank + 1
-      rankLabels.appendChild(label)
+    if (this.options.flipped) {
+      // When flipped, ranks go from 1 to 8
+      for (let rank = 0; rank <= 7; rank++) {
+        const label = document.createElement('div')
+        label.className = 'rank-label'
+        label.textContent = rank + 1
+        rankLabels.appendChild(label)
+      }
+    } else {
+      // Normal orientation: 8 to 1
+      for (let rank = 7; rank >= 0; rank--) {
+        const label = document.createElement('div')
+        label.className = 'rank-label'
+        label.textContent = rank + 1
+        rankLabels.appendChild(label)
+      }
     }
     
     wrapper.appendChild(fileLabels)
@@ -272,11 +305,17 @@ export class ChessBoardComponent {
     const y = event.clientY - rect.top
     
     const squareSize = rect.width / 8
-    const file = Math.floor(x / squareSize)
-    const rank = Math.floor((rect.height - y) / squareSize)
+    let file = Math.floor(x / squareSize)
+    let rank = Math.floor((rect.height - y) / squareSize)
     
     if (file < 0 || file > 7 || rank < 0 || rank > 7) {
       return null
+    }
+    
+    // Adjust for flipped board
+    if (this.options.flipped) {
+      file = 7 - file
+      rank = 7 - rank
     }
     
     return chessBoard.indicesToSquare(file, rank)
@@ -648,7 +687,14 @@ export class ChessBoardComponent {
   flip() {
     this.options.flipped = !this.options.flipped
     this.createBoard()
+    
+    // Re-bind events after recreating the board
+    setTimeout(() => {
+      this.bindEvents()
+    }, 100)
+    
     this.renderPieces()
+    console.log('[ChessBoard] Board flipped, orientation:', this.options.flipped ? 'black' : 'white')
   }
 
   /**
