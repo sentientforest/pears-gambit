@@ -136,18 +136,29 @@ export class GameView {
   createControls() {
     if (!this.controlsContainer) return
 
-    const controls = [
-      { id: 'new-game', text: 'New Game', onClick: () => this.newGame() },
-      { id: 'flip-board', text: 'Flip Board', onClick: () => this.flipBoard() },
-      { id: 'undo-move', text: 'Undo', onClick: () => this.undoMove() },
-      { id: 'export-pgn', text: 'Export PGN', onClick: () => this.exportPgn() }
-    ]
+    // Different controls based on game mode
+    let controls
+    if (this.p2pSession && this.gameState === 'active') {
+      // P2P game controls - replace New Game with Resign
+      controls = [
+        { id: 'resign-game', text: 'Resign', onClick: () => this.resignGame(), className: 'resign-button' },
+        { id: 'flip-board', text: 'Flip Board', onClick: () => this.flipBoard() },
+        { id: 'export-pgn', text: 'Export PGN', onClick: () => this.exportPgn() }
+      ]
+    } else {
+      // Single player or inactive game controls
+      controls = [
+        { id: 'new-game', text: 'New Game', onClick: () => this.newGame() },
+        { id: 'flip-board', text: 'Flip Board', onClick: () => this.flipBoard() },
+        { id: 'export-pgn', text: 'Export PGN', onClick: () => this.exportPgn() }
+      ]
+    }
 
     controls.forEach(control => {
       const button = document.createElement('button')
       button.id = control.id
       button.textContent = control.text
-      button.className = 'control-button'
+      button.className = control.className || 'control-button'
       button.addEventListener('click', control.onClick)
       this.controlsContainer.appendChild(button)
     })
@@ -212,8 +223,17 @@ export class GameView {
    * Start a new game
    */
   newGame() {
-    // Only create new game if not provided via constructor (P2P mode)
-    if (!this.game) {
+    // For solo games, show confirmation if there's an existing game
+    if (!this.p2pSession && this.game && this.game.moveHistory && this.game.moveHistory.length > 0) {
+      const confirmed = confirm('The current board state will be lost if you start a new game. Do you wish to proceed?')
+      if (!confirmed) {
+        return
+      }
+    }
+
+    // Create new game (both P2P and solo)
+    if (!this.p2pSession) {
+      // Solo game - always create fresh game
       this.game = createGame({
         players: {
           white: 'Human Player',
@@ -225,13 +245,21 @@ export class GameView {
       })
       this.game.start()
     } else {
-      // P2P game - set up event handlers
-      this.game.onMove = this.onGameMove.bind(this)
-      this.game.onGameEnd = this.onGameEnd.bind(this)
-      this.game.onCheck = this.onCheck.bind(this)
+      // P2P game - set up event handlers on existing game
+      if (this.game) {
+        this.game.onMove = this.onGameMove.bind(this)
+        this.game.onGameEnd = this.onGameEnd.bind(this)
+        this.game.onCheck = this.onCheck.bind(this)
+      }
     }
 
+    // Reset board state and update display
     this.chessBoard.setGameInstance(this.game)
+    this.chessBoard.reset() // Clear the board visual state
+    
+    // Force update the board with the initial position
+    const initialBoard = chessBoard.parseBoardArray(this.game.getBoard())
+    this.chessBoard.updateBoard(initialBoard)
     this.updateDisplay()
     
     // Set up P2P event handlers if in P2P mode
@@ -246,6 +274,10 @@ export class GameView {
     if (this.playerColor === 'black') {
       this.chessBoard.flip()
     }
+    
+    // Recreate controls with appropriate buttons for the current game state
+    this.controlsContainer.innerHTML = ''
+    this.createControls()
   }
 
   /**
@@ -275,6 +307,11 @@ export class GameView {
     this.p2pSession.gameSync.onError = (error) => {
       console.error('P2P error:', error)
       this.showError('Network error: ' + error.message)
+    }
+
+    // Handle game end from opponent
+    this.p2pSession.gameSync.onGameEnd = (result) => {
+      this.handleOpponentGameEnd(result)
     }
   }
 
@@ -475,8 +512,37 @@ export class GameView {
   onGameEnd(result) {
     console.log('Game ended:', result)
     this.gameState = 'finished'
+    
+    // Notify P2P session about game end
+    if (this.p2pSession && this.gameSession) {
+      this.sendGameEndToOpponent(result)
+    }
+    
     this.showGameResult(result)
     this.updateDisplay()
+  }
+
+  /**
+   * Send game end notification to opponent
+   */
+  async sendGameEndToOpponent(result) {
+    try {
+      if (this.p2pSession.gameSync.isReadyForMoves()) {
+        // Send game end as a special message
+        const gameEndMessage = {
+          type: 'game_end',
+          result: result,
+          gameId: this.gameSession.gameId,
+          timestamp: Date.now()
+        }
+        
+        // Send via P2P sync
+        await this.p2pSession.gameSync.swarmManager.broadcast(gameEndMessage)
+        console.log('Game end notification sent to opponent')
+      }
+    } catch (error) {
+      console.error('Failed to send game end notification:', error)
+    }
   }
 
   /**
@@ -575,6 +641,8 @@ export class GameView {
       switch (gameInfo.result.result) {
         case 'checkmate':
           return `Checkmate - ${gameInfo.result.winner} wins`
+        case 'resignation':
+          return `Resignation - ${gameInfo.result.winner} wins`
         case 'stalemate':
           return 'Stalemate - Draw'
         case 'draw':
@@ -637,6 +705,66 @@ export class GameView {
   }
 
   /**
+   * Resign the game
+   */
+  resignGame() {
+    if (this.gameState !== 'active') {
+      console.log('Cannot resign - game not active')
+      return
+    }
+
+    // Show confirmation dialog
+    const confirmed = confirm('Are you sure you want to resign? This will end the game in a loss.')
+    if (!confirmed) {
+      return
+    }
+
+    console.log('Player resigned the game')
+    
+    // Create resignation result
+    const resignationResult = {
+      result: 'resignation',
+      winner: this.playerColor === 'white' ? 'black' : 'white', // Opponent wins
+      loser: this.playerColor,
+      method: 'resignation',
+      timestamp: Date.now()
+    }
+
+    // Update local game state
+    this.gameState = 'finished'
+    
+    // Send resignation to opponent if P2P
+    if (this.p2pSession && this.gameSession) {
+      this.sendResignationToOpponent(resignationResult)
+    }
+    
+    // Show game result
+    this.showGameResult(resignationResult)
+    this.updateDisplay()
+  }
+
+  /**
+   * Send resignation notification to opponent
+   */
+  async sendResignationToOpponent(result) {
+    try {
+      if (this.p2pSession.gameSync.isReadyForMoves()) {
+        const resignationMessage = {
+          type: 'game_end',
+          result: result,
+          gameId: this.gameSession.gameId,
+          timestamp: Date.now()
+        }
+        
+        await this.p2pSession.gameSync.swarmManager.broadcast(resignationMessage)
+        console.log('Resignation notification sent to opponent')
+      }
+    } catch (error) {
+      console.error('Failed to send resignation notification:', error)
+    }
+  }
+
+  /**
    * Flip the board
    */
   flipBoard() {
@@ -689,32 +817,148 @@ export class GameView {
   }
 
   /**
+   * Handle game end from opponent
+   */
+  handleOpponentGameEnd(result) {
+    console.log('Opponent game end received:', result)
+    this.gameState = 'finished'
+    this.showGameResult(result, true)
+    this.updateDisplay()
+  }
+
+  /**
    * Show game result
    */
-  showGameResult(result) {
-    let message = 'Game Over!\n'
+  showGameResult(result, fromOpponent = false) {
+    let title = 'Game Over!'
+    let message = ''
+    let isWin = false
     
     switch (result.result) {
       case 'checkmate':
-        message += `${result.winner} wins by checkmate!`
+        if (this.p2pSession) {
+          // In P2P mode, show personal result
+          isWin = (result.winner === this.playerColor)
+          message = isWin ? 'You won by checkmate!' : 'You lost by checkmate!'
+        } else {
+          message = `${result.winner} wins by checkmate!`
+        }
+        break
+      case 'resignation':
+        if (this.p2pSession) {
+          // In P2P mode, show personal result
+          isWin = (result.winner === this.playerColor)
+          if (fromOpponent) {
+            message = isWin ? 'Your opponent resigned. You win!' : 'You resigned. You lose!'
+          } else {
+            message = isWin ? 'Your opponent resigned. You win!' : 'You resigned. You lose!'
+          }
+        } else {
+          message = `${result.winner} wins by resignation!`
+        }
         break
       case 'stalemate':
-        message += 'Draw by stalemate!'
+        message = 'Draw by stalemate!'
         break
       case 'draw':
-        message += 'Draw!'
+        message = 'Draw!'
         break
       case 'threefold_repetition':
-        message += 'Draw by threefold repetition!'
+        message = 'Draw by threefold repetition!'
         break
       case 'insufficient_material':
-        message += 'Draw by insufficient material!'
+        message = 'Draw by insufficient material!'
         break
       default:
-        message += 'Game finished!'
+        message = 'Game finished!'
     }
     
-    setTimeout(() => alert(message), 100)
+    // Create a more sophisticated modal instead of alert
+    this.showGameEndModal(title, message, isWin, fromOpponent)
+  }
+
+  /**
+   * Show game end modal
+   */
+  showGameEndModal(title, message, isWin, fromOpponent) {
+    // Create modal backdrop
+    const backdrop = document.createElement('div')
+    backdrop.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `
+    
+    // Create modal content
+    const modal = document.createElement('div')
+    modal.style.cssText = `
+      background-color: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      text-align: center;
+      max-width: 400px;
+      min-width: 300px;
+    `
+    
+    const titleElement = document.createElement('h2')
+    titleElement.textContent = title
+    titleElement.style.color = isWin ? '#28a745' : (isWin === false && title === 'Game Over!' ? '#dc3545' : '#333')
+    titleElement.style.marginTop = '0'
+    
+    const messageElement = document.createElement('p')
+    messageElement.textContent = message
+    messageElement.style.fontSize = '18px'
+    messageElement.style.margin = '20px 0'
+    
+    const buttonContainer = document.createElement('div')
+    buttonContainer.style.cssText = `
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 20px;
+    `
+    
+    const newGameButton = document.createElement('button')
+    newGameButton.textContent = 'Return to Lobby'
+    newGameButton.style.cssText = `
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+    `
+    
+    newGameButton.onclick = () => {
+      backdrop.remove()
+      // Return to lobby logic would go here
+      if (typeof window.pearsGambit !== 'undefined') {
+        window.pearsGambit.returnToLobby()
+      }
+    }
+    
+    buttonContainer.appendChild(newGameButton)
+    modal.appendChild(titleElement)
+    modal.appendChild(messageElement)
+    modal.appendChild(buttonContainer)
+    backdrop.appendChild(modal)
+    document.body.appendChild(backdrop)
+    
+    // Remove modal when clicking backdrop
+    backdrop.onclick = (e) => {
+      if (e.target === backdrop) {
+        backdrop.remove()
+      }
+    }
   }
 
   /**
@@ -841,6 +1085,25 @@ export class GameView {
       
       .control-button:active {
         background-color: #004080;
+      }
+      
+      .resign-button {
+        padding: 10px 15px;
+        border: none;
+        border-radius: 4px;
+        background-color: #dc3545;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background-color 0.2s;
+      }
+      
+      .resign-button:hover {
+        background-color: #c82333;
+      }
+      
+      .resign-button:active {
+        background-color: #bd2130;
       }
       
       .move-history {

@@ -75,15 +75,26 @@ export class ChessBoardComponent {
     const boardElement = document.createElement('div')
     boardElement.className = 'board-squares'
     
-    for (let rank = 7; rank >= 0; rank--) {
-      for (let file = 0; file < 8; file++) {
-        const square = chessBoard.indicesToSquare(file, rank)
-        const squareElement = this.createSquareElement(square, file, rank)
-        boardElement.appendChild(squareElement)
+    // Create squares - handle flipped orientation
+    if (this.options.flipped) {
+      // When flipped, start from rank 0 and go up
+      for (let rank = 0; rank <= 7; rank++) {
+        for (let file = 7; file >= 0; file--) {
+          const square = chessBoard.indicesToSquare(file, rank)
+          const squareElement = this.createSquareElement(square, file, rank)
+          boardElement.appendChild(squareElement)
+        }
+      }
+    } else {
+      // Normal orientation - white on bottom
+      for (let rank = 7; rank >= 0; rank--) {
+        for (let file = 0; file < 8; file++) {
+          const square = chessBoard.indicesToSquare(file, rank)
+          const squareElement = this.createSquareElement(square, file, rank)
+          boardElement.appendChild(squareElement)
+        }
       }
     }
-    
-    wrapper.appendChild(boardElement)
     
     // Add coordinates if enabled
     if (this.options.coordinates) {
@@ -117,22 +128,44 @@ export class ChessBoardComponent {
     const fileLabels = document.createElement('div')
     fileLabels.className = 'file-labels'
     
-    for (let file = 0; file < 8; file++) {
-      const label = document.createElement('div')
-      label.className = 'file-label'
-      label.textContent = chessBoard.files[file]
-      fileLabels.appendChild(label)
+    if (this.options.flipped) {
+      // When flipped, files go from h to a
+      for (let file = 7; file >= 0; file--) {
+        const label = document.createElement('div')
+        label.className = 'file-label'
+        label.textContent = chessBoard.files[file]
+        fileLabels.appendChild(label)
+      }
+    } else {
+      // Normal orientation: a to h
+      for (let file = 0; file < 8; file++) {
+        const label = document.createElement('div')
+        label.className = 'file-label'
+        label.textContent = chessBoard.files[file]
+        fileLabels.appendChild(label)
+      }
     }
     
     // Rank labels (1-8)
     const rankLabels = document.createElement('div')
     rankLabels.className = 'rank-labels'
     
-    for (let rank = 7; rank >= 0; rank--) {
-      const label = document.createElement('div')
-      label.className = 'rank-label'
-      label.textContent = rank + 1
-      rankLabels.appendChild(label)
+    if (this.options.flipped) {
+      // When flipped, ranks go from 1 to 8
+      for (let rank = 0; rank <= 7; rank++) {
+        const label = document.createElement('div')
+        label.className = 'rank-label'
+        label.textContent = rank + 1
+        rankLabels.appendChild(label)
+      }
+    } else {
+      // Normal orientation: 8 to 1
+      for (let rank = 7; rank >= 0; rank--) {
+        const label = document.createElement('div')
+        label.className = 'rank-label'
+        label.textContent = rank + 1
+        rankLabels.appendChild(label)
+      }
     }
     
     wrapper.appendChild(fileLabels)
@@ -154,6 +187,9 @@ export class ChessBoardComponent {
     // Test if element is in DOM
     console.log('[ChessBoard] Board element in DOM:', document.contains(this.boardElement))
     
+    // Clean up any existing drag artifacts before binding
+    this.cleanupDragArtifacts()
+    
     // Always bind click events for piece selection
     this.boardElement.addEventListener('click', this.handleClick.bind(this))
     
@@ -172,6 +208,13 @@ export class ChessBoardComponent {
       this.boardElement.addEventListener('touchstart', this.handleTouchStart.bind(this))
       this.boardElement.addEventListener('touchmove', this.handleTouchMove.bind(this))
       this.boardElement.addEventListener('touchend', this.handleTouchEnd.bind(this))
+      
+      // Global mouse up to catch drags that end outside the board
+      document.addEventListener('mouseup', (event) => {
+        if (this.draggedPiece) {
+          this.completeDrag(null) // Complete drag without move
+        }
+      })
     }
     
     console.log('[ChessBoard] Events bound successfully')
@@ -182,6 +225,10 @@ export class ChessBoardComponent {
    */
   handleMouseDown(event) {
     event.preventDefault()
+    
+    // Clean up any existing drag operations first
+    this.cleanupDragArtifacts()
+    
     const square = this.getSquareFromEvent(event)
     if (!square) return
 
@@ -261,6 +308,11 @@ export class ChessBoardComponent {
   handleTouchEnd(event) {
     if (event.changedTouches.length !== 1) return
     this.handleMouseUp(event.changedTouches[0])
+    
+    // Additional cleanup for touch events
+    setTimeout(() => {
+      this.cleanupDragArtifacts()
+    }, 100)
   }
 
   /**
@@ -272,11 +324,17 @@ export class ChessBoardComponent {
     const y = event.clientY - rect.top
     
     const squareSize = rect.width / 8
-    const file = Math.floor(x / squareSize)
-    const rank = Math.floor((rect.height - y) / squareSize)
+    let file = Math.floor(x / squareSize)
+    let rank = Math.floor((rect.height - y) / squareSize)
     
     if (file < 0 || file > 7 || rank < 0 || rank > 7) {
       return null
+    }
+    
+    // Adjust for flipped board
+    if (this.options.flipped) {
+      file = 7 - file
+      rank = 7 - rank
     }
     
     return chessBoard.indicesToSquare(file, rank)
@@ -318,8 +376,10 @@ export class ChessBoardComponent {
     
     const fromSquare = this.draggedPiece.square
     
-    // Remove drag element
-    document.body.removeChild(this.draggedPiece.element)
+    // Remove drag element safely
+    if (this.draggedPiece.element && this.draggedPiece.element.parentNode) {
+      this.draggedPiece.element.parentNode.removeChild(this.draggedPiece.element)
+    }
     this.draggedPiece = null
     
     // Attempt move
@@ -335,12 +395,13 @@ export class ChessBoardComponent {
    */
   createDragElement(piece) {
     const element = document.createElement('div')
-    element.className = 'drag-piece'
+    element.className = 'drag-piece chess-drag-piece' // Add unique class for cleanup
     element.textContent = chessBoard.getPieceSymbol(piece.type, piece.color)
     element.style.position = 'fixed'
     element.style.pointerEvents = 'none'
     element.style.fontSize = '40px'
     element.style.zIndex = '1000'
+    element.style.userSelect = 'none'
     return element
   }
 
@@ -440,6 +501,9 @@ export class ChessBoardComponent {
    * Update board state
    */
   updateBoard(boardState) {
+    // Clean up any drag artifacts before updating
+    this.cleanupDragArtifacts()
+    
     this.boardState = boardState
     this.renderPieces()
   }
@@ -646,9 +710,19 @@ export class ChessBoardComponent {
    * Flip the board
    */
   flip() {
+    // Clean up any drag operations and artifacts first
+    this.cleanupDragArtifacts()
+    
     this.options.flipped = !this.options.flipped
     this.createBoard()
+    
+    // Re-bind events after recreating the board
+    setTimeout(() => {
+      this.bindEvents()
+    }, 100)
+    
     this.renderPieces()
+    console.log('[ChessBoard] Board flipped, orientation:', this.options.flipped ? 'black' : 'white')
   }
 
   /**
@@ -661,12 +735,30 @@ export class ChessBoardComponent {
   }
 
   /**
+   * Clean up drag artifacts
+   */
+  cleanupDragArtifacts() {
+    // Clean up any leftover drag elements with our unique class
+    document.querySelectorAll('.chess-drag-piece').forEach(element => {
+      if (element.parentNode) {
+        element.parentNode.removeChild(element)
+      }
+    })
+    
+    // Clean up current drag state
+    if (this.draggedPiece) {
+      if (this.draggedPiece.element && this.draggedPiece.element.parentNode) {
+        this.draggedPiece.element.parentNode.removeChild(this.draggedPiece.element)
+      }
+      this.draggedPiece = null
+    }
+  }
+
+  /**
    * Destroy the component
    */
   destroy() {
-    if (this.draggedPiece && this.draggedPiece.element.parentNode) {
-      this.draggedPiece.element.parentNode.removeChild(this.draggedPiece.element)
-    }
+    this.cleanupDragArtifacts()
     this.container.innerHTML = ''
   }
 }

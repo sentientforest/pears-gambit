@@ -32,6 +32,7 @@ export class GameSync {
     this.playerColor = null // 'white' or 'black'
     this.gameState = 'waiting' // waiting, connecting, syncing, active, finished
     this.isHost = false
+    this.isDestroyed = false
 
     // Event handlers
     this.onGameStateChange = options.onGameStateChange || (() => {})
@@ -295,17 +296,60 @@ export class GameSync {
    * Handle peer disconnection
    */
   handlePeerDisconnection(peerId, connection, error) {
-    this.log(`Peer disconnected: ${peerId}`, error)
+    this.log(`Peer disconnected: ${peerId}`, error ? `Error: ${error.message}` : '')
 
-    // If we lose all connections, go back to waiting
+    // Store disconnection info for reconnection attempts
+    this.remotePlayerId = null
+    
+    // If we lose all connections, go back to waiting and attempt reconnection
     if (!this.swarmManager.hasConnections()) {
       if (this.gameState === 'active') {
         this.gameState = 'waiting'
         this.notifyStateChange()
+        
+        // Attempt to reconnect after a short delay
+        if (!this.isDestroyed) {
+          this.attemptReconnection()
+        }
       }
     }
 
     this.onConnectionChange(peerId, 'disconnected')
+  }
+
+  /**
+   * Attempt to reconnect to peers
+   */
+  async attemptReconnection(attempt = 1, maxAttempts = 5) {
+    if (this.isDestroyed || this.gameState === 'active') return
+    
+    this.log(`Reconnection attempt ${attempt}/${maxAttempts}`)
+    
+    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000) // Exponential backoff, max 10s
+    
+    setTimeout(async () => {
+      try {
+        // Try to rejoin the same topic
+        if (this.gameId && this.swarmManager) {
+          const gameKey = Buffer.from(this.gameId, 'hex')
+          await this.swarmManager.joinTopic(gameKey, { 
+            client: true, 
+            server: this.isHost 
+          })
+          
+          this.log('Reconnection topic joined, waiting for peers...')
+        }
+      } catch (error) {
+        this.log('Reconnection attempt failed:', error)
+        
+        if (attempt < maxAttempts) {
+          this.attemptReconnection(attempt + 1, maxAttempts)
+        } else {
+          this.log('Max reconnection attempts reached')
+          this.onError(new Error('Failed to reconnect to game after multiple attempts'))
+        }
+      }
+    }, delay)
   }
 
   /**
@@ -334,6 +378,10 @@ export class GameSync {
 
         case 'sync_complete':
           this.handleSyncComplete(message, peerId)
+          break
+
+        case 'game_end':
+          this.handleGameEndMessage(message, peerId)
           break
 
         default:
@@ -487,6 +535,27 @@ export class GameSync {
   }
 
   /**
+   * Handle game end message from peer
+   */
+  handleGameEndMessage(message, peerId) {
+    if (message.gameId !== this.gameId) {
+      this.log('Game end for different game, ignoring')
+      return
+    }
+
+    this.log('Game end received from peer:', message.result)
+    
+    // Update our game state
+    this.gameState = 'finished'
+    this.notifyStateChange()
+    
+    // Notify the UI about the game end
+    if (this.onGameEnd) {
+      this.onGameEnd(message.result)
+    }
+  }
+
+  /**
    * Handle player join
    */
   handlePlayerJoin(playerKey) {
@@ -556,6 +625,7 @@ export class GameSync {
    */
   async destroy() {
     this.log('Destroying game synchronization...')
+    this.isDestroyed = true
 
     try {
       if (this.swarmManager) {
