@@ -223,8 +223,17 @@ export class GameView {
    * Start a new game
    */
   newGame() {
-    // Only create new game if not provided via constructor (P2P mode)
-    if (!this.game) {
+    // For solo games, show confirmation if there's an existing game
+    if (!this.p2pSession && this.game && this.game.moveHistory && this.game.moveHistory.length > 0) {
+      const confirmed = confirm('The current board state will be lost if you start a new game. Do you wish to proceed?')
+      if (!confirmed) {
+        return
+      }
+    }
+
+    // Create new game (both P2P and solo)
+    if (!this.p2pSession) {
+      // Solo game - always create fresh game
       this.game = createGame({
         players: {
           white: 'Human Player',
@@ -236,13 +245,21 @@ export class GameView {
       })
       this.game.start()
     } else {
-      // P2P game - set up event handlers
-      this.game.onMove = this.onGameMove.bind(this)
-      this.game.onGameEnd = this.onGameEnd.bind(this)
-      this.game.onCheck = this.onCheck.bind(this)
+      // P2P game - set up event handlers on existing game
+      if (this.game) {
+        this.game.onMove = this.onGameMove.bind(this)
+        this.game.onGameEnd = this.onGameEnd.bind(this)
+        this.game.onCheck = this.onCheck.bind(this)
+      }
     }
 
+    // Reset board state and update display
     this.chessBoard.setGameInstance(this.game)
+    this.chessBoard.reset() // Clear the board visual state
+    
+    // Force update the board with the initial position
+    const initialBoard = chessBoard.parseBoardArray(this.game.getBoard())
+    this.chessBoard.updateBoard(initialBoard)
     this.updateDisplay()
     
     // Set up P2P event handlers if in P2P mode
