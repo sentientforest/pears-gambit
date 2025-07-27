@@ -167,10 +167,18 @@ export class GameLobby {
           <p>Practice against the computer or analyze positions</p>
           <button id="single-player-btn" class="secondary-button">Play Solo</button>
         </div>
+
+        <div class="lobby-section" id="saved-games-section">
+          <h3>Resume Game</h3>
+          <div id="saved-games-list" class="saved-games-list">
+            <p class="loading-text">Loading saved games...</p>
+          </div>
+        </div>
       </div>
     `
 
     this.addStyles()
+    this.loadSavedGames()
   }
 
   /**
@@ -727,6 +735,89 @@ export class GameLobby {
         100% { transform: rotate(360deg); }
       }
       
+      .saved-games-list {
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      
+      .saved-game-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px;
+        margin-bottom: 8px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        transition: all 0.2s;
+      }
+      
+      .saved-game-item:hover {
+        background: #e9ecef;
+      }
+      
+      .saved-game-info {
+        flex: 1;
+      }
+      
+      .saved-game-players {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 4px;
+      }
+      
+      .saved-game-details {
+        font-size: 12px;
+        color: #666;
+      }
+      
+      .saved-game-actions {
+        display: flex;
+        gap: 8px;
+      }
+      
+      .resume-button {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      
+      .resume-button:hover {
+        background: #218838;
+      }
+      
+      .delete-button {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      
+      .delete-button:hover {
+        background: #c82333;
+      }
+      
+      .no-saved-games,
+      .loading-text,
+      .error-text {
+        text-align: center;
+        color: #666;
+        font-style: italic;
+        padding: 20px;
+      }
+      
+      .error-text {
+        color: #dc3545;
+      }
+      
       @media (max-width: 768px) {
         .game-lobby {
           padding: 20px 10px;
@@ -739,9 +830,181 @@ export class GameLobby {
         .invite-code-display {
           flex-direction: column;
         }
+        
+        .saved-game-item {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        
+        .saved-game-actions {
+          margin-top: 8px;
+          width: 100%;
+        }
+        
+        .resume-button {
+          flex: 1;
+        }
       }
     `
     document.head.appendChild(style)
+  }
+
+  /**
+   * Load and display saved games
+   */
+  async loadSavedGames() {
+    try {
+      const savedGames = await this.p2pSession.gameSync.listSavedGames()
+      const listContainer = document.getElementById('saved-games-list')
+      
+      if (!listContainer) return
+      
+      if (savedGames.length === 0) {
+        listContainer.innerHTML = '<p class="no-saved-games">No saved games found</p>'
+        return
+      }
+      
+      listContainer.innerHTML = ''
+      
+      savedGames.forEach((game, index) => {
+        const gameItem = document.createElement('div')
+        gameItem.className = 'saved-game-item'
+        
+        const gameInfo = document.createElement('div')
+        gameInfo.className = 'saved-game-info'
+        
+        const players = document.createElement('div')
+        players.className = 'saved-game-players'
+        players.textContent = `${game.players.white} vs ${game.players.black}`
+        
+        const details = document.createElement('div')
+        details.className = 'saved-game-details'
+        const savedDate = new Date(game.savedAt)
+        details.textContent = `${game.moveCount} moves · ${savedDate.toLocaleDateString()}`
+        
+        gameInfo.appendChild(players)
+        gameInfo.appendChild(details)
+        
+        const actions = document.createElement('div')
+        actions.className = 'saved-game-actions'
+        
+        const resumeBtn = document.createElement('button')
+        resumeBtn.className = 'resume-button'
+        resumeBtn.textContent = 'Resume'
+        resumeBtn.onclick = () => this.resumeGame(game.gameId)
+        
+        const deleteBtn = document.createElement('button')
+        deleteBtn.className = 'delete-button'
+        deleteBtn.textContent = '🗑️'
+        deleteBtn.title = 'Delete saved game'
+        deleteBtn.onclick = () => this.deleteSavedGame(game.gameId)
+        
+        actions.appendChild(resumeBtn)
+        actions.appendChild(deleteBtn)
+        
+        gameItem.appendChild(gameInfo)
+        gameItem.appendChild(actions)
+        
+        listContainer.appendChild(gameItem)
+      })
+    } catch (error) {
+      this.log('Failed to load saved games:', error)
+      const listContainer = document.getElementById('saved-games-list')
+      if (listContainer) {
+        listContainer.innerHTML = '<p class="error-text">Failed to load saved games</p>'
+      }
+    }
+  }
+
+  /**
+   * Resume a saved game
+   */
+  async resumeGame(gameId) {
+    try {
+      this.log('Resuming game:', gameId)
+      
+      // Show loading state
+      const section = document.getElementById('saved-games-section')
+      if (section) {
+        section.style.opacity = '0.5'
+        section.style.pointerEvents = 'none'
+      }
+      
+      // Restore game state
+      const result = await this.p2pSession.gameSync.restoreGameState(gameId)
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+      
+      // Create chess game instance with restored state
+      const { createGame } = await import('../chess/index.js')
+      const chessGame = createGame({
+        players: result.gameState.players
+      })
+      
+      // Restore game from FEN
+      chessGame.loadFromFen(result.gameState.fen)
+      
+      // Restore move history
+      if (result.gameState.moveHistory) {
+        chessGame.moveHistory = result.gameState.moveHistory
+      }
+      
+      // Set game state
+      chessGame.start()
+      
+      // Rejoin P2P network with saved connection info
+      const gameKey = Buffer.from(result.connectionInfo.gameKey, 'hex')
+      await this.p2pSession.gameSync.swarmManager.joinTopic(gameKey, {
+        client: true,
+        server: result.connectionInfo.isHost
+      })
+      
+      // Start the game
+      const gameSession = {
+        gameId: gameId,
+        playerColor: result.gameState.playerColor,
+        isHost: result.gameState.isHost
+      }
+      
+      this.onGameStart({
+        mode: 'p2p',
+        chessGame,
+        gameSession,
+        p2pSession: this.p2pSession,
+        resumed: true
+      })
+      
+    } catch (error) {
+      this.log('Failed to resume game:', error)
+      this.showError('Failed to resume game: ' + error.message)
+      
+      // Reset UI state
+      const section = document.getElementById('saved-games-section')
+      if (section) {
+        section.style.opacity = '1'
+        section.style.pointerEvents = 'auto'
+      }
+    }
+  }
+
+  /**
+   * Delete a saved game
+   */
+  async deleteSavedGame(gameId) {
+    try {
+      const confirmed = confirm('Are you sure you want to delete this saved game?')
+      if (!confirmed) return
+      
+      await this.p2pSession.gameSync.persistence.deleteGame(gameId)
+      this.log('Deleted saved game:', gameId)
+      
+      // Reload the list
+      await this.loadSavedGames()
+    } catch (error) {
+      this.log('Failed to delete saved game:', error)
+      this.showError('Failed to delete saved game')
+    }
   }
 
   /**

@@ -208,6 +208,16 @@ export class GameView {
         <span class="label">Black:</span>
         <span id="black-player" class="value">Human</span>
       </div>
+      <div class="captured-pieces-section">
+        <div class="captured-pieces white-captured">
+          <span class="captured-label">White captured:</span>
+          <span id="white-captured" class="captured-pieces-list"></span>
+        </div>
+        <div class="captured-pieces black-captured">
+          <span class="captured-label">Black captured:</span>
+          <span id="black-captured" class="captured-pieces-list"></span>
+        </div>
+      </div>
     `
   }
 
@@ -322,6 +332,13 @@ export class GameView {
     try {
       console.log('Sending move to opponent:', move)
       
+      // Validate our own move before sending
+      if (!this.validateOutgoingMove(move)) {
+        console.error('Attempted to send invalid move:', move)
+        this.showError('Internal error: Invalid move generated')
+        return
+      }
+      
       // Check if P2P is ready
       if (!this.p2pSession.gameSync.isReadyForMoves()) {
         console.warn('P2P not ready for moves yet, move not sent')
@@ -342,14 +359,57 @@ export class GameView {
   }
 
   /**
+   * Validate outgoing move before sending
+   */
+  validateOutgoingMove(move) {
+    // Ensure all required fields are present
+    if (!move.from || !move.to || !move.player || !move.piece) {
+      console.error('Outgoing move missing required fields')
+      return false
+    }
+    
+    // Ensure player color matches our assigned color
+    if (move.player !== this.playerColor) {
+      console.error('Outgoing move has wrong player color')
+      return false
+    }
+    
+    // Ensure we have valid FEN and SAN
+    if (!move.fen || !move.san) {
+      console.error('Outgoing move missing FEN or SAN')
+      return false
+    }
+    
+    return true
+  }
+
+  /**
    * Handle move received from opponent
    */
   handleRemoteMove(move) {
     console.log('Received remote move:', move)
     
+    // Enhanced validation
+    if (!this.validateRemoteMove(move)) {
+      console.error('Invalid remote move received:', move)
+      this.showError('Invalid move received from opponent')
+      this.handleSyncError()
+      return
+    }
+    
     // Validate it's the opponent's turn
     if (move.player === this.playerColor) {
       console.log('Ignoring our own move')
+      return
+    }
+    
+    // Validate turn order
+    const expectedTurn = this.game.getTurn()
+    const opponentColor = this.playerColor === 'white' ? 'black' : 'white'
+    if (expectedTurn !== opponentColor) {
+      console.error('Turn order mismatch - expected:', expectedTurn, 'got move from:', opponentColor)
+      this.showError('Turn order synchronization error')
+      this.handleSyncError()
       return
     }
     
@@ -369,6 +429,13 @@ export class GameView {
     
     if (result.success) {
       console.log('Remote move applied successfully:', result)
+      
+      // Verify the resulting FEN matches what was sent
+      if (move.fen && result.move.fen !== move.fen) {
+        console.warn('FEN mismatch after move - local:', result.move.fen, 'remote:', move.fen)
+        // Continue anyway but log the discrepancy
+      }
+      
       this.updateDisplay()
       
       // Force board update
@@ -381,7 +448,8 @@ export class GameView {
       }
     } else {
       console.error('Failed to apply remote move:', result.error)
-      this.showError('Sync error: Failed to apply opponent move')
+      this.showError('Sync error: Failed to apply opponent move - ' + result.error)
+      this.handleSyncError()
     }
   }
 
@@ -617,6 +685,41 @@ export class GameView {
         }
       }
     }
+    
+    // Update captured pieces
+    this.updateCapturedPieces()
+  }
+
+  /**
+   * Update captured pieces display
+   */
+  updateCapturedPieces() {
+    const whiteCaptured = []
+    const blackCaptured = []
+    
+    // Count captured pieces from move history
+    this.game.moveHistory.forEach(move => {
+      if (move.captured) {
+        const pieceSymbol = chessBoard.getPieceSymbol(move.captured, move.player === 'white' ? 'b' : 'w')
+        if (move.player === 'white') {
+          blackCaptured.push(pieceSymbol)
+        } else {
+          whiteCaptured.push(pieceSymbol)
+        }
+      }
+    })
+    
+    // Update display
+    const whiteCapturedElement = document.getElementById('white-captured')
+    const blackCapturedElement = document.getElementById('black-captured')
+    
+    if (whiteCapturedElement) {
+      whiteCapturedElement.textContent = whiteCaptured.join(' ') || 'None'
+    }
+    
+    if (blackCapturedElement) {
+      blackCapturedElement.textContent = blackCaptured.join(' ') || 'None'
+    }
   }
 
   /**
@@ -671,6 +774,15 @@ export class GameView {
     historyList.innerHTML = ''
 
     const moves = this.game.moveHistory
+    
+    // Add header with column labels
+    if (moves.length > 0) {
+      const headerRow = document.createElement('div')
+      headerRow.className = 'move-header-row'
+      headerRow.innerHTML = '<span class="move-number-header">#</span><span class="move-header">White</span><span class="move-header">Black</span>'
+      historyList.appendChild(headerRow)
+    }
+    
     for (let i = 0; i < moves.length; i += 2) {
       const moveNumber = Math.floor(i / 2) + 1
       const whiteMove = moves[i]
@@ -685,7 +797,10 @@ export class GameView {
 
       const whiteSpan = document.createElement('span')
       whiteSpan.className = 'move white-move'
-      whiteSpan.textContent = whiteMove.san
+      whiteSpan.textContent = this.formatMoveNotation(whiteMove)
+      whiteSpan.title = `Click to view position after ${whiteMove.san}`
+      whiteSpan.dataset.moveIndex = i
+      whiteSpan.addEventListener('click', () => this.jumpToMove(i))
 
       moveRow.appendChild(numberSpan)
       moveRow.appendChild(whiteSpan)
@@ -693,15 +808,94 @@ export class GameView {
       if (blackMove) {
         const blackSpan = document.createElement('span')
         blackSpan.className = 'move black-move'
-        blackSpan.textContent = blackMove.san
+        blackSpan.textContent = this.formatMoveNotation(blackMove)
+        blackSpan.title = `Click to view position after ${blackMove.san}`
+        blackSpan.dataset.moveIndex = i + 1
+        blackSpan.addEventListener('click', () => this.jumpToMove(i + 1))
         moveRow.appendChild(blackSpan)
+      } else {
+        // Add empty span for layout consistency
+        const emptySpan = document.createElement('span')
+        emptySpan.className = 'move black-move'
+        moveRow.appendChild(emptySpan)
+      }
+
+      // Highlight last move
+      if (i === moves.length - 1 || (blackMove && i + 1 === moves.length - 1)) {
+        moveRow.classList.add('last-move-row')
       }
 
       historyList.appendChild(moveRow)
     }
 
+    // Add result if game is over
+    if (this.game.isGameOver()) {
+      const resultRow = document.createElement('div')
+      resultRow.className = 'move-result'
+      const gameInfo = this.game.getGameInfo()
+      if (gameInfo.result) {
+        resultRow.textContent = this.getResultNotation(gameInfo.result)
+      }
+      historyList.appendChild(resultRow)
+    }
+
     // Scroll to bottom
     historyList.scrollTop = historyList.scrollHeight
+  }
+
+  /**
+   * Format move notation with symbols
+   */
+  formatMoveNotation(move) {
+    let notation = move.san
+    
+    // Add check/checkmate symbols if not already present
+    if (move.checkmate && !notation.includes('#')) {
+      notation += '#'
+    } else if (move.check && !notation.includes('+')) {
+      notation += '+'
+    }
+    
+    // Add capture symbol for better visibility
+    if (move.captured) {
+      notation = notation.replace('x', '×')
+    }
+    
+    return notation
+  }
+
+  /**
+   * Get result notation for display
+   */
+  getResultNotation(result) {
+    switch (result.result) {
+      case 'checkmate':
+        return result.winner === 'white' ? '1-0' : '0-1'
+      case 'stalemate':
+      case 'draw':
+      case 'threefold_repetition':
+      case 'insufficient_material':
+        return '½-½'
+      case 'resignation':
+        return result.winner === 'white' ? '1-0 (Resignation)' : '0-1 (Resignation)'
+      default:
+        return '*'
+    }
+  }
+
+  /**
+   * Jump to a specific move in history (view-only for now)
+   */
+  jumpToMove(moveIndex) {
+    // TODO: Implement position viewer for historical moves
+    console.log('View position after move', moveIndex)
+    // For now, just highlight the selected move
+    const moves = document.querySelectorAll('.move')
+    moves.forEach(move => move.classList.remove('selected-move'))
+    const selectedMove = document.querySelector(`[data-move-index="${moveIndex}"]`)
+    if (selectedMove) {
+      selectedMove.classList.add('selected-move')
+    }
   }
 
   /**
@@ -962,6 +1156,68 @@ export class GameView {
   }
 
   /**
+   * Validate remote move structure and data
+   */
+  validateRemoteMove(move) {
+    // Check required fields
+    if (!move || typeof move !== 'object') {
+      console.error('Move is not an object')
+      return false
+    }
+    
+    if (!move.from || !move.to) {
+      console.error('Move missing from/to fields')
+      return false
+    }
+    
+    // Validate square format (a1-h8)
+    const squareRegex = /^[a-h][1-8]$/
+    if (!squareRegex.test(move.from) || !squareRegex.test(move.to)) {
+      console.error('Invalid square format:', move.from, move.to)
+      return false
+    }
+    
+    // Validate player field
+    if (!move.player || (move.player !== 'white' && move.player !== 'black')) {
+      console.error('Invalid player field:', move.player)
+      return false
+    }
+    
+    // Validate promotion if present
+    if (move.promotion && !['q', 'r', 'b', 'n'].includes(move.promotion)) {
+      console.error('Invalid promotion piece:', move.promotion)
+      return false
+    }
+    
+    // Validate timestamp is reasonable (within last minute)
+    if (move.timestamp) {
+      const now = Date.now()
+      const moveAge = now - move.timestamp
+      if (moveAge < 0 || moveAge > 60000) {
+        console.warn('Suspicious move timestamp:', move.timestamp, 'age:', moveAge)
+        // Don't reject, just warn
+      }
+    }
+    
+    return true
+  }
+
+  /**
+   * Handle synchronization errors
+   */
+  handleSyncError() {
+    console.error('Game synchronization error detected')
+    
+    // TODO: In future, implement game state recovery
+    // For now, just log and continue
+    
+    if (this.p2pSession && this.gameSession) {
+      // Could request full game state from opponent
+      console.log('TODO: Implement game state recovery')
+    }
+  }
+
+  /**
    * Handle window resize
    */
   handleResize() {
@@ -1062,6 +1318,41 @@ export class GameView {
         color: #333;
       }
       
+      .captured-pieces-section {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #eee;
+      }
+      
+      .captured-pieces {
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+      }
+      
+      .captured-label {
+        font-size: 12px;
+        font-weight: bold;
+        color: #666;
+        margin-right: 8px;
+        min-width: 100px;
+      }
+      
+      .captured-pieces-list {
+        font-size: 20px;
+        font-family: Arial, sans-serif;
+        letter-spacing: 2px;
+      }
+      
+      .white-captured .captured-pieces-list {
+        color: #000;
+      }
+      
+      .black-captured .captured-pieces-list {
+        color: #000;
+        text-shadow: 0 0 1px #666;
+      }
+      
       .game-controls {
         display: flex;
         flex-wrap: wrap;
@@ -1118,6 +1409,7 @@ export class GameView {
         border-radius: 4px;
         padding: 10px;
         background-color: #fafafa;
+        font-family: 'Courier New', monospace;
       }
       
       .move-row {
@@ -1139,6 +1431,7 @@ export class GameView {
         margin-right: 8px;
         border-radius: 3px;
         cursor: pointer;
+        transition: all 0.2s;
       }
       
       .white-move {
@@ -1152,6 +1445,47 @@ export class GameView {
       .move:hover {
         background-color: #007bff;
         color: white;
+      }
+      
+      .move.selected-move {
+        background-color: #28a745;
+        color: white;
+      }
+      
+      .move-header-row {
+        display: flex;
+        align-items: center;
+        border-bottom: 2px solid #dee2e6;
+        margin-bottom: 4px;
+        font-weight: bold;
+        font-size: 12px;
+        color: #666;
+      }
+      
+      .move-number-header {
+        width: 30px;
+        text-align: center;
+      }
+      
+      .move-header {
+        min-width: 60px;
+        padding: 2px 6px;
+        margin-right: 8px;
+      }
+      
+      .last-move-row {
+        background-color: #fff3cd;
+        border-radius: 3px;
+      }
+      
+      .move-result {
+        text-align: center;
+        font-weight: bold;
+        font-size: 16px;
+        margin-top: 10px;
+        padding: 8px;
+        background-color: #f8f9fa;
+        border-radius: 4px;
       }
       
       @media (max-width: 768px) {

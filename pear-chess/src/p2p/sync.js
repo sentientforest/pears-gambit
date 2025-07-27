@@ -6,6 +6,7 @@
 
 import { createGameCore } from './core.js'
 import { createSwarmManager } from './swarm.js'
+import { createGamePersistence } from './persistence.js'
 
 /**
  * Game Synchronization Manager
@@ -24,6 +25,7 @@ export class GameSync {
     this.gameCore = null
     this.swarmManager = null
     this.chessGame = null
+    this.persistence = null
 
     // State
     this.gameId = null
@@ -51,6 +53,12 @@ export class GameSync {
   async init() {
     try {
       this.log('Initializing game synchronization...')
+
+      // Create persistence manager
+      this.persistence = createGamePersistence({
+        storage: this.options.storage + '-state',
+        debug: this.options.debug
+      })
 
       // Create game core
       this.gameCore = createGameCore({
@@ -104,6 +112,15 @@ export class GameSync {
       this.log(`Game created with invite code: ${invitation.inviteCode}, topic: ${this.gameId}`)
       this.notifyStateChange()
 
+      // Save initial game state and connection info
+      await this.saveGameState()
+      await this.persistence.saveConnectionInfo(this.gameId, {
+        inviteCode: invitation.inviteCode,
+        gameKey: gameKey.toString('hex'),
+        playerColor: this.playerColor,
+        isHost: this.isHost
+      })
+
       return {
         success: true,
         gameId: this.gameId,
@@ -138,6 +155,14 @@ export class GameSync {
 
       this.log(`Successfully joined game topic: ${this.gameId}, waiting for connection...`)
       this.notifyStateChange()
+
+      // Save connection info
+      await this.persistence.saveConnectionInfo(this.gameId, {
+        inviteCode: inviteCode,
+        gameKey: gameKey.toString('hex'),
+        playerColor: this.playerColor,
+        isHost: this.isHost
+      })
 
       // Check if we already have connections before waiting
       if (this.swarmManager.hasConnections()) {
@@ -221,6 +246,9 @@ export class GameSync {
 
       const sentCount = this.swarmManager.broadcast(message)
       this.log(`Move broadcasted to ${sentCount} peers`)
+
+      // Save game state after move
+      await this.saveGameState()
 
       return true
     } catch (error) {
@@ -621,6 +649,80 @@ export class GameSync {
   }
 
   /**
+   * Save current game state
+   */
+  async saveGameState() {
+    if (!this.chessGame || !this.gameId) return
+
+    try {
+      const gameInfo = this.chessGame.getGameInfo()
+      const state = {
+        gameId: this.gameId,
+        players: gameInfo.players,
+        moveHistory: this.chessGame.moveHistory,
+        currentTurn: gameInfo.currentTurn,
+        isGameOver: gameInfo.isGameOver,
+        result: gameInfo.result,
+        startTime: gameInfo.startTime,
+        playerColor: this.playerColor,
+        isHost: this.isHost,
+        fen: this.chessGame.toFen()
+      }
+
+      await this.persistence.saveGame(this.gameId, state)
+      this.log('Game state saved')
+    } catch (error) {
+      this.log('Failed to save game state:', error)
+    }
+  }
+
+  /**
+   * Restore game state
+   * @param {string} gameId - Game to restore
+   */
+  async restoreGameState(gameId) {
+    try {
+      const result = await this.persistence.loadGame(gameId)
+      if (!result.success) {
+        return { success: false, error: result.error }
+      }
+
+      const connectionResult = await this.persistence.loadConnectionInfo(gameId)
+      if (!connectionResult.success) {
+        return { success: false, error: 'Connection info not found' }
+      }
+
+      // Restore game properties
+      this.gameId = gameId
+      this.playerColor = result.gameState.playerColor
+      this.isHost = result.gameState.isHost
+
+      // Return the saved state for the chess game to restore
+      return {
+        success: true,
+        gameState: result.gameState,
+        connectionInfo: connectionResult.connectionInfo,
+        savedAt: result.savedAt
+      }
+    } catch (error) {
+      this.log('Failed to restore game state:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  /**
+   * List saved games
+   */
+  async listSavedGames() {
+    try {
+      return await this.persistence.listSavedGames()
+    } catch (error) {
+      this.log('Failed to list saved games:', error)
+      return []
+    }
+  }
+
+  /**
    * Cleanup and destroy
    */
   async destroy() {
@@ -628,6 +730,11 @@ export class GameSync {
     this.isDestroyed = true
 
     try {
+      // Save final game state before destroying
+      if (this.gameState === 'active' && this.chessGame) {
+        await this.saveGameState()
+      }
+
       if (this.swarmManager) {
         await this.swarmManager.destroy()
       }
