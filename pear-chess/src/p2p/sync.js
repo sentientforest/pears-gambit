@@ -6,6 +6,7 @@
 
 import { createGameCore } from './core.js'
 import { createSwarmManager } from './swarm.js'
+import { createGamePersistence } from './persistence.js'
 
 /**
  * Game Synchronization Manager
@@ -24,6 +25,7 @@ export class GameSync {
     this.gameCore = null
     this.swarmManager = null
     this.chessGame = null
+    this.persistence = null
 
     // State
     this.gameId = null
@@ -33,6 +35,7 @@ export class GameSync {
     this.gameState = 'waiting' // waiting, connecting, syncing, active, finished
     this.isHost = false
     this.isDestroyed = false
+    this.timeControl = null
 
     // Event handlers
     this.onGameStateChange = options.onGameStateChange || (() => {})
@@ -51,6 +54,12 @@ export class GameSync {
   async init() {
     try {
       this.log('Initializing game synchronization...')
+
+      // Create persistence manager
+      this.persistence = createGamePersistence({
+        storage: this.options.storage + '-state',
+        debug: this.options.debug
+      })
 
       // Create game core
       this.gameCore = createGameCore({
@@ -85,7 +94,7 @@ export class GameSync {
   /**
    * Create a new game (host)
    */
-  async createGame(chessGame, invitation) {
+  async createGame(chessGame, invitation, timeControl = null) {
     try {
       this.log('Creating new game as host')
       
@@ -93,6 +102,7 @@ export class GameSync {
       this.isHost = true
       this.playerColor = 'white' // Host plays white
       this.gameState = 'waiting'
+      this.timeControl = timeControl
 
       // Use the game key from the discovery invitation
       const gameKey = Buffer.from(invitation.gameKey, 'hex')
@@ -103,6 +113,15 @@ export class GameSync {
 
       this.log(`Game created with invite code: ${invitation.inviteCode}, topic: ${this.gameId}`)
       this.notifyStateChange()
+
+      // Save initial game state and connection info
+      await this.saveGameState()
+      await this.persistence.saveConnectionInfo(this.gameId, {
+        inviteCode: invitation.inviteCode,
+        gameKey: gameKey.toString('hex'),
+        playerColor: this.playerColor,
+        isHost: this.isHost
+      })
 
       return {
         success: true,
@@ -120,7 +139,7 @@ export class GameSync {
   /**
    * Join an existing game (guest)
    */
-  async joinGame(inviteCode, chessGame, joinInfo) {
+  async joinGame(inviteCode, chessGame, joinInfo, timeControl = null) {
     try {
       this.log(`Joining game with invite code: ${inviteCode}`)
       
@@ -128,6 +147,7 @@ export class GameSync {
       this.isHost = false
       this.playerColor = 'black' // Guest plays black
       this.gameState = 'connecting'
+      this.timeControl = timeControl
 
       // Use the game key from discovery join info
       const gameKey = joinInfo.gameKey
@@ -138,6 +158,14 @@ export class GameSync {
 
       this.log(`Successfully joined game topic: ${this.gameId}, waiting for connection...`)
       this.notifyStateChange()
+
+      // Save connection info
+      await this.persistence.saveConnectionInfo(this.gameId, {
+        inviteCode: inviteCode,
+        gameKey: gameKey.toString('hex'),
+        playerColor: this.playerColor,
+        isHost: this.isHost
+      })
 
       // Check if we already have connections before waiting
       if (this.swarmManager.hasConnections()) {
@@ -170,7 +198,7 @@ export class GameSync {
   /**
    * Send a move to the network
    */
-  async sendMove(move) {
+  async sendMove(move, clockState = null) {
     if (!this.gameCore || !this.chessGame) {
       throw new Error('Game not initialized')
     }
@@ -211,16 +239,20 @@ export class GameSync {
       // Add move to local game log
       await this.gameCore.addMove(networkMove)
 
-      // Broadcast move to connected peers
+      // Broadcast move to connected peers with clock state
       const message = {
         type: 'move',
         move: networkMove,
+        clockState: clockState,
         gameId: this.gameId,
         timestamp: Date.now()
       }
 
       const sentCount = this.swarmManager.broadcast(message)
       this.log(`Move broadcasted to ${sentCount} peers`)
+
+      // Save game state after move
+      await this.saveGameState(clockState)
 
       return true
     } catch (error) {
@@ -450,9 +482,9 @@ export class GameSync {
       return
     }
 
-    // Directly notify the UI about the remote move
+    // Directly notify the UI about the remote move with clock state
     // The move will also be synced via Autobase replication
-    this.onMoveReceived(message.move)
+    this.onMoveReceived(message.move, message.clockState)
     
     // Also add to Autobase for persistence
     try {
@@ -549,9 +581,14 @@ export class GameSync {
     this.gameState = 'finished'
     this.notifyStateChange()
     
+    // Save final game state with clock state if provided
+    if (message.clockState) {
+      this.saveGameState(message.clockState)
+    }
+    
     // Notify the UI about the game end
     if (this.onGameEnd) {
-      this.onGameEnd(message.result)
+      this.onGameEnd(message.result, message.clockState)
     }
   }
 
@@ -621,6 +658,83 @@ export class GameSync {
   }
 
   /**
+   * Save current game state
+   */
+  async saveGameState(clockState = null) {
+    if (!this.chessGame || !this.gameId) return
+
+    try {
+      const gameInfo = this.chessGame.getGameInfo()
+      const state = {
+        gameId: this.gameId,
+        players: gameInfo.players,
+        moveHistory: this.chessGame.moveHistory,
+        currentTurn: gameInfo.currentTurn,
+        isGameOver: gameInfo.isGameOver,
+        result: gameInfo.result,
+        startTime: gameInfo.startTime,
+        playerColor: this.playerColor,
+        isHost: this.isHost,
+        fen: this.chessGame.toFen(),
+        clockState: clockState,
+        timeControl: this.timeControl || null
+      }
+
+      await this.persistence.saveGame(this.gameId, state)
+      this.log('Game state saved')
+    } catch (error) {
+      this.log('Failed to save game state:', error)
+    }
+  }
+
+  /**
+   * Restore game state
+   * @param {string} gameId - Game to restore
+   */
+  async restoreGameState(gameId) {
+    try {
+      const result = await this.persistence.loadGame(gameId)
+      if (!result.success) {
+        return { success: false, error: result.error }
+      }
+
+      const connectionResult = await this.persistence.loadConnectionInfo(gameId)
+      if (!connectionResult.success) {
+        return { success: false, error: 'Connection info not found' }
+      }
+
+      // Restore game properties
+      this.gameId = gameId
+      this.playerColor = result.gameState.playerColor
+      this.isHost = result.gameState.isHost
+      this.timeControl = result.gameState.timeControl
+
+      // Return the saved state for the chess game to restore
+      return {
+        success: true,
+        gameState: result.gameState,
+        connectionInfo: connectionResult.connectionInfo,
+        savedAt: result.savedAt
+      }
+    } catch (error) {
+      this.log('Failed to restore game state:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  /**
+   * List saved games
+   */
+  async listSavedGames() {
+    try {
+      return await this.persistence.listSavedGames()
+    } catch (error) {
+      this.log('Failed to list saved games:', error)
+      return []
+    }
+  }
+
+  /**
    * Cleanup and destroy
    */
   async destroy() {
@@ -628,6 +742,11 @@ export class GameSync {
     this.isDestroyed = true
 
     try {
+      // Save final game state before destroying
+      if (this.gameState === 'active' && this.chessGame) {
+        await this.saveGameState()
+      }
+
       if (this.swarmManager) {
         await this.swarmManager.destroy()
       }

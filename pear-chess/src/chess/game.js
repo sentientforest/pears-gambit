@@ -123,6 +123,21 @@ export class ChessGame {
   }
 
   /**
+   * Load game state from FEN string
+   * @param {string} fen - FEN notation string
+   */
+  loadFromFen(fen) {
+    try {
+      this.chess.load(fen)
+      this.log('Game loaded from FEN:', fen)
+      return { success: true }
+    } catch (error) {
+      this.log('Failed to load FEN:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  /**
    * Get current turn (who plays next)
    */
   getTurn() {
@@ -192,6 +207,42 @@ export class ChessGame {
       return { success: true, move: standardMove }
     } catch (error) {
       return { success: false, error: error.message }
+    }
+  }
+
+  /**
+   * Validate a move without making it
+   * @param {Object} moveInput - Move to validate
+   * @returns {Object} Validation result
+   */
+  validateMove(moveInput) {
+    if (this.gameState !== 'active') {
+      return { valid: false, error: 'Game is not active' }
+    }
+
+    try {
+      // Get all valid moves for the piece
+      const moves = this.chess.moves({ square: moveInput.from, verbose: true })
+      
+      // Check if the target move is in the valid moves list
+      const validMove = moves.find(m => 
+        m.from === moveInput.from && 
+        m.to === moveInput.to &&
+        (!moveInput.promotion || m.promotion === moveInput.promotion)
+      )
+      
+      if (validMove) {
+        return { 
+          valid: true, 
+          move: validMove,
+          wouldCheck: false, // TODO: Could simulate to check this
+          wouldCheckmate: false
+        }
+      } else {
+        return { valid: false, error: 'Invalid move' }
+      }
+    } catch (error) {
+      return { valid: false, error: error.message }
     }
   }
 
