@@ -99,6 +99,43 @@ export function createP2PGameSession(options = {}) {
     },
 
     /**
+     * Join an existing game as spectator
+     */
+    async joinGameAsSpectator(inviteCode, chessGame, options = {}) {
+      try {
+        console.log(`[P2PGameSession] Joining game as spectator with invite code: ${inviteCode}`)
+
+        // Resolve the invite code to get game key
+        const joinInfo = await discovery.resolveInviteCode(inviteCode)
+        if (!joinInfo.success) {
+          return { success: false, error: joinInfo.error }
+        }
+
+        console.log('[P2PGameSession] Invite resolved for spectator:', joinInfo)
+
+        // Join the game as spectator (read-only)
+        const result = await gameSync.joinGameAsSpectator(inviteCode, chessGame, joinInfo)
+        if (!result.success) {
+          return { success: false, error: result.error }
+        }
+
+        return {
+          success: true,
+          gameSession: {
+            gameId: result.gameId,
+            playerColor: null, // Spectators don't have a color
+            isHost: false,
+            isSpectator: true
+          },
+          inviteCode: inviteCode
+        }
+      } catch (error) {
+        console.error('[P2PGameSession] Failed to join as spectator:', error)
+        return { success: false, error: error.message }
+      }
+    },
+
+    /**
      * Cleanup everything
      */
     async destroy() {

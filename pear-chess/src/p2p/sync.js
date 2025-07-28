@@ -137,6 +137,65 @@ export class GameSync {
   }
 
   /**
+   * Join an existing game as spectator
+   */
+  async joinGameAsSpectator(inviteCode, chessGame, joinInfo) {
+    try {
+      this.log(`Joining game as spectator with invite code: ${inviteCode}`)
+      
+      this.chessGame = chessGame
+      this.isHost = false
+      this.playerColor = null // Spectators don't have a color
+      this.gameState = 'connecting'
+
+      // Use the game key from discovery join info
+      const gameKey = joinInfo.gameKey
+      this.gameId = gameKey.toString('hex')
+
+      // Join the topic as read-only client
+      await this.swarmManager.joinTopic(gameKey, { client: true, server: false })
+
+      this.log(`Successfully joined game topic as spectator: ${this.gameId}, waiting for connection...`)
+      this.notifyStateChange()
+
+      // Save connection info
+      await this.persistence.saveConnectionInfo(this.gameId, {
+        inviteCode: inviteCode,
+        gameKey: gameKey.toString('hex'),
+        playerColor: null,
+        isHost: false,
+        isSpectator: true
+      })
+
+      // Check if we already have connections before waiting
+      if (this.swarmManager.hasConnections()) {
+        this.log('Already connected to peers as spectator')
+        this.gameState = 'syncing'
+        this.notifyStateChange()
+      } else {
+        // Wait for peer connection with shorter timeout
+        try {
+          await this.swarmManager.waitForConnections(1, 10000)
+          this.log('Connected to peer successfully as spectator')
+        } catch (timeoutError) {
+          this.log('Timeout waiting for connections, but continuing anyway')
+          // Don't fail - the connection might still happen
+        }
+      }
+
+      return {
+        success: true,
+        gameId: this.gameId,
+        playerColor: null
+      }
+    } catch (error) {
+      this.log('Failed to join as spectator:', error)
+      this.onError(error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  /**
    * Join an existing game (guest)
    */
   async joinGame(inviteCode, chessGame, joinInfo, timeControl = null) {

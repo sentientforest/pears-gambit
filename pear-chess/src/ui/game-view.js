@@ -25,7 +25,8 @@ export class GameView {
       showControls: options.showControls !== false,
       showMoveHistory: options.showMoveHistory !== false,
       showGameInfo: options.showGameInfo !== false,
-      mode: options.mode || 'single-player', // single-player, p2p
+      mode: options.mode || 'single-player', // single-player, p2p, spectator
+      spectating: options.spectating || false,
       ...options
     }
 
@@ -135,7 +136,7 @@ export class GameView {
     this.chessBoard = new ChessBoardComponent('chess-board-container', {
       size: 480,
       coordinates: true,
-      draggable: true,
+      draggable: !this.options.spectating, // Disable dragging for spectators
       onMove: this.handleMove.bind(this),
       onSquareClick: this.handleSquareClick.bind(this),
       onPieceSelect: this.handlePieceSelect.bind(this)
@@ -172,7 +173,14 @@ export class GameView {
 
     // Different controls based on game mode
     let controls
-    if (this.p2pSession && this.gameState === 'active') {
+    if (this.options.spectating) {
+      // Spectator controls - limited options
+      controls = [
+        { id: 'leave-spectate', text: 'Leave', onClick: () => this.leaveSpectatorMode() },
+        { id: 'flip-board', text: 'Flip Board', onClick: () => this.flipBoard() },
+        { id: 'toggle-sound', text: soundManager.options.enabled ? '🔊 Sound' : '🔇 Sound', onClick: () => this.toggleSound() }
+      ]
+    } else if (this.p2pSession && this.gameState === 'active') {
       // P2P game controls - replace New Game with Resign
       controls = [
         { id: 'resign-game', text: 'Resign', onClick: () => this.resignGame(), className: 'resign-button' },
@@ -217,6 +225,44 @@ export class GameView {
   }
 
   /**
+   * Create invite code display for P2P games
+   */
+  createInviteCodeDisplay() {
+    // Try to get the invite code from the current session
+    const inviteCode = this.getCurrentInviteCode()
+    
+    if (!inviteCode) return ''
+    
+    return `
+      <div class="invite-code-info">
+        <div class="invite-label">Spectator Code:</div>
+        <div class="invite-code-display-small">
+          <span id="current-invite-code">${inviteCode}</span>
+          <button id="copy-spectator-code" class="copy-button-small" title="Copy spectator code">📋</button>
+        </div>
+        <small>Share this code with spectators</small>
+      </div>
+    `
+  }
+
+  /**
+   * Get current invite code from P2P session
+   */
+  getCurrentInviteCode() {
+    // Try to get invite code from various sources
+    if (this.gameSession && this.gameSession.inviteCode) {
+      return this.gameSession.inviteCode
+    }
+    
+    // Check if we have it stored in the P2P session
+    if (this.p2pSession && this.p2pSession.currentInvite) {
+      return this.p2pSession.currentInvite.inviteCode
+    }
+    
+    return null
+  }
+
+  /**
    * Create game information display
    */
   createGameInfo() {
@@ -224,6 +270,8 @@ export class GameView {
 
     this.gameInfoContainer.innerHTML = `
       <h3>Game Information</h3>
+      ${this.options.spectating ? '<div class="spectator-badge">👁️ SPECTATING</div>' : ''}
+      ${this.p2pSession && !this.options.spectating ? this.createInviteCodeDisplay() : ''}
       <div class="info-row">
         <span class="label">Status:</span>
         <span id="game-status" class="value">Waiting</span>
@@ -263,6 +311,50 @@ export class GameView {
   bindEvents() {
     // Window resize
     window.addEventListener('resize', this.handleResize.bind(this))
+    
+    // Bind copy spectator code button if it exists
+    setTimeout(() => {
+      const copyBtn = document.getElementById('copy-spectator-code')
+      if (copyBtn) {
+        copyBtn.addEventListener('click', () => this.copySpectatorCode())
+      }
+    }, 100) // Small delay to ensure DOM is ready
+  }
+
+  /**
+   * Copy spectator code to clipboard
+   */
+  async copySpectatorCode() {
+    const inviteCode = document.getElementById('current-invite-code')?.textContent
+    
+    if (!inviteCode) return
+    
+    try {
+      await navigator.clipboard.writeText(inviteCode)
+      
+      const button = document.getElementById('copy-spectator-code')
+      if (button) {
+        const originalText = button.textContent
+        button.textContent = '✅'
+        
+        setTimeout(() => {
+          button.textContent = originalText
+        }, 2000)
+      }
+      
+      console.log('Spectator code copied to clipboard:', inviteCode)
+    } catch (error) {
+      console.error('Failed to copy spectator code:', error)
+      
+      // Fallback: select the text
+      const codeElement = document.getElementById('current-invite-code')
+      if (codeElement) {
+        const range = document.createRange()
+        range.selectNode(codeElement)
+        window.getSelection().removeAllRanges()
+        window.getSelection().addRange(range)
+      }
+    }
   }
 
   /**
@@ -314,16 +406,26 @@ export class GameView {
    * Start a new game
    */
   newGame() {
-    // For solo games, show confirmation if there's an existing game
-    if (!this.p2pSession && this.game && this.game.moveHistory && this.game.moveHistory.length > 0) {
-      const confirmed = confirm('The current board state will be lost if you start a new game. Do you wish to proceed?')
-      if (!confirmed) {
-        return
+    // Skip confirmation for spectator mode
+    if (!this.options.spectating) {
+      // For solo games, show confirmation if there's an existing game
+      if (!this.p2pSession && this.game && this.game.moveHistory && this.game.moveHistory.length > 0) {
+        const confirmed = confirm('The current board state will be lost if you start a new game. Do you wish to proceed?')
+        if (!confirmed) {
+          return
+        }
       }
     }
 
-    // Create new game (both P2P and solo)
-    if (!this.p2pSession) {
+    // Create new game (solo, P2P, or spectator)
+    if (this.options.spectating) {
+      // Spectator mode - game is already provided from lobby
+      if (this.game) {
+        this.game.onMove = this.onGameMove.bind(this)
+        this.game.onGameEnd = this.onGameEnd.bind(this)
+        this.game.onCheck = this.onCheck.bind(this)
+      }
+    } else if (!this.p2pSession) {
       // Solo game - always create fresh game
       this.game = createGame({
         players: {
@@ -617,6 +719,13 @@ export class GameView {
    */
   handleMove(move) {
     console.log('handleMove called:', move, 'gameState:', this.gameState, 'turn:', this.game.getTurn(), 'playerColor:', this.playerColor)
+    
+    // Block moves in spectator mode
+    if (this.options.spectating) {
+      console.log('Cannot make moves in spectator mode')
+      soundManager.play('invalid')
+      return
+    }
     
     if (this.gameState !== 'active') {
       console.log('Game not active, ignoring move')
@@ -1228,6 +1337,27 @@ export class GameView {
   }
 
   /**
+   * Leave spectator mode and return to lobby
+   */
+  leaveSpectatorMode() {
+    console.log('Leaving spectator mode')
+    
+    // Clean up spectator connections
+    if (this.p2pSession && this.options.spectating) {
+      // Disconnect from the game topic
+      // In a full implementation, this would properly leave the swarm
+    }
+    
+    // Return to lobby
+    if (this.options.onLeaveSpectator) {
+      this.options.onLeaveSpectator()
+    } else {
+      // Reload to go back to lobby
+      window.location.reload()
+    }
+  }
+
+  /**
    * Show error message
    */
   showError(message) {
@@ -1726,6 +1856,68 @@ export class GameView {
         padding: 8px;
         background-color: #f8f9fa;
         border-radius: 4px;
+      }
+      
+      .spectator-badge {
+        background: #17a2b8;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 4px;
+        text-align: center;
+        font-weight: bold;
+        margin-bottom: 15px;
+        font-size: 14px;
+        letter-spacing: 1px;
+      }
+      
+      .invite-code-info {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 15px;
+        font-size: 13px;
+      }
+      
+      .invite-label {
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 6px;
+      }
+      
+      .invite-code-display-small {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      
+      .invite-code-display-small span {
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+        font-size: 14px;
+        color: #007bff;
+        letter-spacing: 1px;
+      }
+      
+      .copy-button-small {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 4px 6px;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: background-color 0.2s;
+      }
+      
+      .copy-button-small:hover {
+        background: #218838;
+      }
+      
+      .invite-code-info small {
+        color: #6c757d;
+        font-size: 11px;
       }
       
       @media (max-width: 768px) {
