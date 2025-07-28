@@ -7,6 +7,7 @@
 import { ChessBoardComponent } from './components/chess-board.js'
 import { ChessClockComponent } from './components/chess-clock.js'
 import { createGame, chessBoard } from '../chess/index.js'
+import { soundManager } from './sound-manager.js'
 
 /**
  * Game View Component
@@ -176,14 +177,16 @@ export class GameView {
       controls = [
         { id: 'resign-game', text: 'Resign', onClick: () => this.resignGame(), className: 'resign-button' },
         { id: 'flip-board', text: 'Flip Board', onClick: () => this.flipBoard() },
-        { id: 'export-pgn', text: 'Export PGN', onClick: () => this.exportPgn() }
+        { id: 'export-pgn', text: 'Export PGN', onClick: () => this.exportPgn() },
+        { id: 'toggle-sound', text: soundManager.options.enabled ? '🔊 Sound' : '🔇 Sound', onClick: () => this.toggleSound() }
       ]
     } else {
       // Single player or inactive game controls
       controls = [
         { id: 'new-game', text: 'New Game', onClick: () => this.newGame() },
         { id: 'flip-board', text: 'Flip Board', onClick: () => this.flipBoard() },
-        { id: 'export-pgn', text: 'Export PGN', onClick: () => this.exportPgn() }
+        { id: 'export-pgn', text: 'Export PGN', onClick: () => this.exportPgn() },
+        { id: 'toggle-sound', text: soundManager.options.enabled ? '🔊 Sound' : '🔇 Sound', onClick: () => this.toggleSound() }
       ]
     }
 
@@ -357,6 +360,9 @@ export class GameView {
     
     this.gameState = 'active'
     console.log('Game started:', this.game.getGameInfo())
+    
+    // Play game start sound
+    soundManager.play('gameStart')
     
     // Start the chess clock if enabled
     if (this.chessClock && this.chessClock.options.enabled) {
@@ -660,6 +666,10 @@ export class GameView {
    */
   onGameMove(move) {
     console.log('Game move event:', move)
+    
+    // Play move sound
+    soundManager.playMove(move)
+    
     this.updateMoveHistory()
     
     // Switch clock turn after move
@@ -697,6 +707,9 @@ export class GameView {
    */
   handleTimeExpired(player) {
     console.log(`Time expired for ${player}`)
+    
+    // Play timeout sound
+    soundManager.play('timeout')
     
     // End game due to time expiration
     const winner = player === 'white' ? 'black' : 'white'
@@ -738,6 +751,9 @@ export class GameView {
   onGameEnd(result) {
     console.log('Game ended:', result)
     this.gameState = 'finished'
+    
+    // Play game end sound
+    soundManager.play('gameEnd')
     
     // Notify P2P session about game end
     if (this.p2pSession && this.gameSession) {
@@ -786,6 +802,9 @@ export class GameView {
    */
   onCheck(move) {
     console.log('Check detected:', move)
+    
+    // Play check sound
+    soundManager.play('check')
     
     // Find king square and highlight it
     const currentBoard = chessBoard.parseBoardArray(this.game.getBoard())
@@ -1087,6 +1106,9 @@ export class GameView {
 
     console.log('Player resigned the game')
     
+    // Play resign/game end sound
+    soundManager.play('gameEnd')
+    
     // Create resignation result
     const resignationResult = {
       result: 'resignation',
@@ -1182,6 +1204,27 @@ export class GameView {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+  }
+
+  /**
+   * Toggle sound on/off
+   */
+  toggleSound() {
+    const enabled = !soundManager.options.enabled
+    soundManager.setEnabled(enabled)
+    
+    // Update button text
+    const button = document.getElementById('toggle-sound')
+    if (button) {
+      button.textContent = enabled ? '🔊 Sound' : '🔇 Sound'
+    }
+    
+    // Play a test sound if enabling
+    if (enabled) {
+      soundManager.play('move')
+    }
+    
+    console.log('Sound toggled:', enabled)
   }
 
   /**
