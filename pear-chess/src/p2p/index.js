@@ -44,7 +44,7 @@ export function createP2PGameSession(options = {}) {
       }
 
       // Start hosting the game with the invitation
-      const hostResult = await gameSync.createGame(chessGame, inviteResult.invitation)
+      const hostResult = await gameSync.createGame(chessGame, inviteResult.invitation, gameConfig.timeControl)
       if (!hostResult.success) {
         return hostResult
       }
@@ -71,8 +71,8 @@ export function createP2PGameSession(options = {}) {
         return joinResult
       }
 
-      // Connect to the game with join info
-      const connectResult = await gameSync.joinGame(inviteCode, chessGame, joinResult.joinInfo)
+      // Connect to the game with join info  
+      const connectResult = await gameSync.joinGame(inviteCode, chessGame, joinResult.joinInfo, playerConfig.timeControl)
       if (!connectResult.success) {
         return connectResult
       }

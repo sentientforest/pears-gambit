@@ -35,6 +35,7 @@ export class GameSync {
     this.gameState = 'waiting' // waiting, connecting, syncing, active, finished
     this.isHost = false
     this.isDestroyed = false
+    this.timeControl = null
 
     // Event handlers
     this.onGameStateChange = options.onGameStateChange || (() => {})
@@ -93,7 +94,7 @@ export class GameSync {
   /**
    * Create a new game (host)
    */
-  async createGame(chessGame, invitation) {
+  async createGame(chessGame, invitation, timeControl = null) {
     try {
       this.log('Creating new game as host')
       
@@ -101,6 +102,7 @@ export class GameSync {
       this.isHost = true
       this.playerColor = 'white' // Host plays white
       this.gameState = 'waiting'
+      this.timeControl = timeControl
 
       // Use the game key from the discovery invitation
       const gameKey = Buffer.from(invitation.gameKey, 'hex')
@@ -137,7 +139,7 @@ export class GameSync {
   /**
    * Join an existing game (guest)
    */
-  async joinGame(inviteCode, chessGame, joinInfo) {
+  async joinGame(inviteCode, chessGame, joinInfo, timeControl = null) {
     try {
       this.log(`Joining game with invite code: ${inviteCode}`)
       
@@ -145,6 +147,7 @@ export class GameSync {
       this.isHost = false
       this.playerColor = 'black' // Guest plays black
       this.gameState = 'connecting'
+      this.timeControl = timeControl
 
       // Use the game key from discovery join info
       const gameKey = joinInfo.gameKey
@@ -673,7 +676,8 @@ export class GameSync {
         playerColor: this.playerColor,
         isHost: this.isHost,
         fen: this.chessGame.toFen(),
-        clockState: clockState
+        clockState: clockState,
+        timeControl: this.timeControl || null
       }
 
       await this.persistence.saveGame(this.gameId, state)
@@ -703,6 +707,7 @@ export class GameSync {
       this.gameId = gameId
       this.playerColor = result.gameState.playerColor
       this.isHost = result.gameState.isHost
+      this.timeControl = result.gameState.timeControl
 
       // Return the saved state for the chess game to restore
       return {

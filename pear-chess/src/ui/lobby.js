@@ -974,7 +974,9 @@ export class GameLobby {
         chessGame,
         gameSession,
         p2pSession: this.p2pSession,
-        resumed: true
+        timeControl: result.gameState.timeControl,
+        resumed: true,
+        savedGameState: result.gameState
       })
       
     } catch (error) {

@@ -144,10 +144,17 @@ class PearsGambitApp {
         gameViewOptions.chessGame = gameData.chessGame
         gameViewOptions.p2pSession = gameData.p2pSession
         gameViewOptions.gameSession = gameData.gameSession
+        gameViewOptions.timeControl = gameData.timeControl
       }
       
       this.gameView = new GameView('game-container', gameViewOptions)
       this.currentMode = 'game'
+      
+      // If this is a resumed game, restore the saved state
+      if (gameData.resumed && gameData.savedGameState) {
+        console.log('Restoring saved game state...')
+        await this.gameView.restoreGame(gameData.savedGameState)
+      }
       
       console.log('Game started successfully')
       
