@@ -261,7 +261,7 @@ export class GameLobby {
         this.updateConnectionStatus(state, status)
         
         if (state === 'active') {
-          this.startGame(chessGame, result.gameSession)
+          this.startGame(chessGame, result.gameSession, this.parseTimeControl(timeControl))
         }
       }
 
@@ -330,7 +330,8 @@ export class GameLobby {
     this.onGameStart({
       mode: 'single-player',
       chessGame: null,
-      p2pSession: null
+      p2pSession: null,
+      timeControl: null // No time control for single player by default
     })
   }
 
@@ -417,14 +418,15 @@ export class GameLobby {
   /**
    * Start the actual game
    */
-  startGame(chessGame, gameSession) {
+  startGame(chessGame, gameSession, timeControl = null) {
     this.log('Starting P2P game:', gameSession)
     
     this.onGameStart({
       mode: 'p2p',
       chessGame,
       gameSession,
-      p2pSession: this.p2pSession
+      p2pSession: this.p2pSession,
+      timeControl: timeControl
     })
   }
 

@@ -195,7 +195,7 @@ export class GameSync {
   /**
    * Send a move to the network
    */
-  async sendMove(move) {
+  async sendMove(move, clockState = null) {
     if (!this.gameCore || !this.chessGame) {
       throw new Error('Game not initialized')
     }
@@ -236,10 +236,11 @@ export class GameSync {
       // Add move to local game log
       await this.gameCore.addMove(networkMove)
 
-      // Broadcast move to connected peers
+      // Broadcast move to connected peers with clock state
       const message = {
         type: 'move',
         move: networkMove,
+        clockState: clockState,
         gameId: this.gameId,
         timestamp: Date.now()
       }
@@ -248,7 +249,7 @@ export class GameSync {
       this.log(`Move broadcasted to ${sentCount} peers`)
 
       // Save game state after move
-      await this.saveGameState()
+      await this.saveGameState(clockState)
 
       return true
     } catch (error) {
@@ -478,9 +479,9 @@ export class GameSync {
       return
     }
 
-    // Directly notify the UI about the remote move
+    // Directly notify the UI about the remote move with clock state
     // The move will also be synced via Autobase replication
-    this.onMoveReceived(message.move)
+    this.onMoveReceived(message.move, message.clockState)
     
     // Also add to Autobase for persistence
     try {
@@ -577,9 +578,14 @@ export class GameSync {
     this.gameState = 'finished'
     this.notifyStateChange()
     
+    // Save final game state with clock state if provided
+    if (message.clockState) {
+      this.saveGameState(message.clockState)
+    }
+    
     // Notify the UI about the game end
     if (this.onGameEnd) {
-      this.onGameEnd(message.result)
+      this.onGameEnd(message.result, message.clockState)
     }
   }
 
@@ -651,7 +657,7 @@ export class GameSync {
   /**
    * Save current game state
    */
-  async saveGameState() {
+  async saveGameState(clockState = null) {
     if (!this.chessGame || !this.gameId) return
 
     try {
@@ -666,7 +672,8 @@ export class GameSync {
         startTime: gameInfo.startTime,
         playerColor: this.playerColor,
         isHost: this.isHost,
-        fen: this.chessGame.toFen()
+        fen: this.chessGame.toFen(),
+        clockState: clockState
       }
 
       await this.persistence.saveGame(this.gameId, state)

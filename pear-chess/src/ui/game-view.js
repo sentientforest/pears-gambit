@@ -5,6 +5,7 @@
  */
 
 import { ChessBoardComponent } from './components/chess-board.js'
+import { ChessClockComponent } from './components/chess-clock.js'
 import { createGame, chessBoard } from '../chess/index.js'
 
 /**
@@ -30,7 +31,10 @@ export class GameView {
     // Game state
     this.game = options.chessGame || null
     this.chessBoard = null
+    this.chessClock = null
     this.gameState = 'waiting' // waiting, active, paused, finished
+    this.timeControl = options.timeControl || null
+    this.lastClockSave = null
 
     // P2P state
     this.p2pSession = options.p2pSession || null
@@ -43,6 +47,7 @@ export class GameView {
     this.controlsContainer = null
     this.moveHistoryContainer = null
     this.gameInfoContainer = null
+    this.clockContainer = null
 
     this.init()
   }
@@ -54,6 +59,7 @@ export class GameView {
     console.log('[GameView] Initializing game view for player:', this.playerColor)
     this.createLayout()
     this.createChessBoard()
+    this.createChessClock()
     this.createControls()
     this.createMoveHistory()
     this.createGameInfo()
@@ -83,7 +89,13 @@ export class GameView {
     this.boardContainer.id = 'chess-board-container'
     this.boardContainer.className = 'board-container'
 
+    // Clock container
+    this.clockContainer = document.createElement('div')
+    this.clockContainer.id = 'chess-clock-container'
+    this.clockContainer.className = 'clock-container'
+
     gameArea.appendChild(this.boardContainer)
+    gameArea.appendChild(this.clockContainer)
 
     // Side panel
     const sidePanel = document.createElement('div')
@@ -128,6 +140,27 @@ export class GameView {
       onPieceSelect: this.handlePieceSelect.bind(this)
     })
     console.log('[GameView] Chess board component created:', this.chessBoard)
+  }
+
+  /**
+   * Create chess clock component
+   */
+  createChessClock() {
+    console.log('[GameView] Creating chess clock component')
+    
+    // Determine if clock should be enabled
+    const clockEnabled = this.timeControl && this.timeControl.type !== 'none'
+    
+    this.chessClock = new ChessClockComponent('chess-clock-container', {
+      enabled: clockEnabled,
+      initialTime: this.timeControl?.minutes * 60000 || 300000, // Convert minutes to milliseconds
+      increment: this.timeControl?.increment * 1000 || 0, // Convert seconds to milliseconds
+      onTimeUpdate: this.handleTimeUpdate.bind(this),
+      onTimeExpired: this.handleTimeExpired.bind(this),
+      onClockClick: this.handleClockClick.bind(this)
+    })
+    
+    console.log('[GameView] Chess clock component created:', this.chessClock)
   }
 
   /**
@@ -230,6 +263,51 @@ export class GameView {
   }
 
   /**
+   * Restore a saved game
+   */
+  async restoreGame(savedGameState) {
+    console.log('Restoring saved game:', savedGameState)
+    
+    // Restore the chess game state
+    if (this.game) {
+      // Apply move history to restore board state
+      if (savedGameState.moveHistory && savedGameState.moveHistory.length > 0) {
+        for (const move of savedGameState.moveHistory) {
+          const chessMove = {
+            from: move.from,
+            to: move.to
+          }
+          if (move.promotion) {
+            chessMove.promotion = move.promotion
+          }
+          
+          const result = this.game.makeMove(chessMove)
+          if (!result.success) {
+            console.error('Failed to restore move:', move, result.error)
+            break
+          }
+        }
+      }
+    }
+    
+    // Restore clock state if available
+    if (savedGameState.clockState && this.chessClock && this.chessClock.options.enabled) {
+      console.log('Restoring clock state:', savedGameState.clockState)
+      this.chessClock.setTimeState(savedGameState.clockState)
+    }
+    
+    // Update the display
+    this.updateDisplay()
+    
+    // Force update the board with the current position
+    const boardState = chessBoard.parseBoardArray(this.game.getBoard())
+    this.chessBoard.updateBoard(boardState)
+    
+    this.gameState = 'active'
+    console.log('Game restored successfully')
+  }
+
+  /**
    * Start a new game
    */
   newGame() {
@@ -279,6 +357,12 @@ export class GameView {
     
     this.gameState = 'active'
     console.log('Game started:', this.game.getGameInfo())
+    
+    // Start the chess clock if enabled
+    if (this.chessClock && this.chessClock.options.enabled) {
+      this.chessClock.reset()
+      this.chessClock.start()
+    }
     
     // Flip board for black player in P2P mode
     if (this.playerColor === 'black') {
@@ -346,7 +430,11 @@ export class GameView {
         return
       }
       
-      await this.p2pSession.gameSync.sendMove(move)
+      // Get current clock state to send with move
+      const clockState = this.chessClock && this.chessClock.options.enabled ? 
+        this.chessClock.getTimeState() : null
+      
+      await this.p2pSession.gameSync.sendMove(move, clockState)
       console.log('Move sent successfully')
     } catch (error) {
       console.error('Failed to send move:', error)
@@ -386,8 +474,8 @@ export class GameView {
   /**
    * Handle move received from opponent
    */
-  handleRemoteMove(move) {
-    console.log('Received remote move:', move)
+  handleRemoteMove(move, clockState = null) {
+    console.log('Received remote move:', move, 'clockState:', clockState)
     
     // Enhanced validation
     if (!this.validateRemoteMove(move)) {
@@ -434,6 +522,12 @@ export class GameView {
       if (move.fen && result.move.fen !== move.fen) {
         console.warn('FEN mismatch after move - local:', result.move.fen, 'remote:', move.fen)
         // Continue anyway but log the discrepancy
+      }
+      
+      // Synchronize clock state from opponent if provided
+      if (clockState && this.chessClock && this.chessClock.options.enabled) {
+        console.log('Synchronizing clock state from opponent:', clockState)
+        this.chessClock.setTimeState(clockState)
       }
       
       this.updateDisplay()
@@ -568,10 +662,74 @@ export class GameView {
     console.log('Game move event:', move)
     this.updateMoveHistory()
     
+    // Switch clock turn after move
+    if (this.chessClock && this.gameState === 'active') {
+      this.chessClock.switchTurn()
+    }
+    
     // Highlight last move
     if (move.from && move.to) {
       this.chessBoard.highlightLastMove(move.from, move.to)
     }
+  }
+
+  /**
+   * Handle clock time update
+   */
+  handleTimeUpdate(timeState) {
+    // Update time display in game info if needed
+    // Could add time warnings, etc.
+    
+    // Periodically save game state with clock (every 30 seconds)
+    if (this.p2pSession && this.gameState === 'active') {
+      const now = Date.now()
+      if (!this.lastClockSave || now - this.lastClockSave > 30000) {
+        this.lastClockSave = now
+        this.p2pSession.gameSync.saveGameState(timeState).catch(error => {
+          console.error('Failed to save clock state:', error)
+        })
+      }
+    }
+  }
+
+  /**
+   * Handle clock time expiration
+   */
+  handleTimeExpired(player) {
+    console.log(`Time expired for ${player}`)
+    
+    // End game due to time expiration
+    const winner = player === 'white' ? 'black' : 'white'
+    const result = {
+      result: 'timeout',
+      winner: winner,
+      loser: player,
+      method: 'time_expiration',
+      timestamp: Date.now()
+    }
+    
+    this.gameState = 'finished'
+    
+    // Stop the clock
+    if (this.chessClock) {
+      this.chessClock.stop()
+    }
+    
+    // Send timeout to opponent if P2P
+    if (this.p2pSession && this.gameSession) {
+      this.sendGameEndToOpponent(result)
+    }
+    
+    this.showGameResult(result)
+    this.updateDisplay()
+  }
+
+  /**
+   * Handle clock click (for manual clock controls)
+   */
+  handleClockClick(player) {
+    // Could implement manual clock switching for casual games
+    console.log(`Clock clicked for ${player}`)
   }
 
   /**
@@ -596,17 +754,27 @@ export class GameView {
   async sendGameEndToOpponent(result) {
     try {
       if (this.p2pSession.gameSync.isReadyForMoves()) {
+        // Get final clock state
+        const clockState = this.chessClock && this.chessClock.options.enabled ? 
+          this.chessClock.getTimeState() : null
+        
         // Send game end as a special message
         const gameEndMessage = {
           type: 'game_end',
           result: result,
           gameId: this.gameSession.gameId,
+          clockState: clockState,
           timestamp: Date.now()
         }
         
         // Send via P2P sync
         await this.p2pSession.gameSync.swarmManager.broadcast(gameEndMessage)
         console.log('Game end notification sent to opponent')
+        
+        // Save final game state with clock
+        if (this.p2pSession.gameSync) {
+          await this.p2pSession.gameSync.saveGameState(clockState)
+        }
       }
     } catch (error) {
       console.error('Failed to send game end notification:', error)
@@ -754,6 +922,8 @@ export class GameView {
           return 'Draw by repetition'
         case 'insufficient_material':
           return 'Draw - Insufficient material'
+        case 'timeout':
+          return `Time out - ${gameInfo.result.winner} wins`
         default:
           return 'Game Over'
       }
@@ -878,6 +1048,8 @@ export class GameView {
         return '½-½'
       case 'resignation':
         return result.winner === 'white' ? '1-0 (Resignation)' : '0-1 (Resignation)'
+      case 'timeout':
+        return result.winner === 'white' ? '1-0 (Time)' : '0-1 (Time)'
       default:
         return '*'
     }
@@ -943,15 +1115,25 @@ export class GameView {
   async sendResignationToOpponent(result) {
     try {
       if (this.p2pSession.gameSync.isReadyForMoves()) {
+        // Get final clock state
+        const clockState = this.chessClock && this.chessClock.options.enabled ? 
+          this.chessClock.getTimeState() : null
+        
         const resignationMessage = {
           type: 'game_end',
           result: result,
           gameId: this.gameSession.gameId,
+          clockState: clockState,
           timestamp: Date.now()
         }
         
         await this.p2pSession.gameSync.swarmManager.broadcast(resignationMessage)
         console.log('Resignation notification sent to opponent')
+        
+        // Save final game state with clock
+        if (this.p2pSession.gameSync) {
+          await this.p2pSession.gameSync.saveGameState(clockState)
+        }
       }
     } catch (error) {
       console.error('Failed to send resignation notification:', error)
@@ -1013,9 +1195,15 @@ export class GameView {
   /**
    * Handle game end from opponent
    */
-  handleOpponentGameEnd(result) {
-    console.log('Opponent game end received:', result)
+  handleOpponentGameEnd(result, clockState = null) {
+    console.log('Opponent game end received:', result, 'clockState:', clockState)
     this.gameState = 'finished'
+    
+    // Update clock state from opponent's final state
+    if (clockState && this.chessClock && this.chessClock.options.enabled) {
+      this.chessClock.setTimeState(clockState)
+    }
+    
     this.showGameResult(result, true)
     this.updateDisplay()
   }
@@ -1062,6 +1250,15 @@ export class GameView {
         break
       case 'insufficient_material':
         message = 'Draw by insufficient material!'
+        break
+      case 'timeout':
+        if (this.p2pSession) {
+          // In P2P mode, show personal result
+          isWin = (result.winner === this.playerColor)
+          message = isWin ? 'Your opponent ran out of time. You win!' : 'You ran out of time. You lose!'
+        } else {
+          message = `${result.winner} wins on time!`
+        }
         break
       default:
         message = 'Game finished!'
