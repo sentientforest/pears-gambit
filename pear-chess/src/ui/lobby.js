@@ -174,6 +174,29 @@ export class GameLobby {
             <p class="loading-text">Loading saved games...</p>
           </div>
         </div>
+
+        <div class="lobby-section" id="spectator-section">
+          <h3>Watch Game</h3>
+          <p>Enter an invite code to spectate an ongoing game</p>
+          <div class="spectate-game-form">
+            <div class="form-group">
+              <label for="spectate-invite-code">Invite Code:</label>
+              <input type="text" id="spectate-invite-code" placeholder="XXX-XXX" maxlength="7">
+              <small>Enter the 6-character invite code from the players</small>
+            </div>
+            
+            <button id="spectate-game-btn" class="primary-button">Watch Game</button>
+          </div>
+          
+          <div id="spectating-game" class="spectating-game hidden">
+            <h4>🔄 Joining as Spectator...</h4>
+            <div class="connection-status">
+              <span id="spectate-status">Connecting to game...</span>
+              <div class="loading-spinner"></div>
+            </div>
+            <button id="cancel-spectate" class="secondary-button">Cancel</button>
+          </div>
+        </div>
       </div>
     `
 
@@ -216,6 +239,21 @@ export class GameLobby {
 
     // Auto-format invite code input
     document.getElementById('invite-code-input').addEventListener('input', (e) => {
+      this.formatInviteCode(e.target)
+    })
+
+    // Spectate game
+    document.getElementById('spectate-game-btn').addEventListener('click', () => {
+      this.spectateGame()
+    })
+
+    // Cancel spectate
+    document.getElementById('cancel-spectate').addEventListener('click', () => {
+      this.cancelSpectate()
+    })
+
+    // Auto-format spectate invite code input
+    document.getElementById('spectate-invite-code').addEventListener('input', (e) => {
       this.formatInviteCode(e.target)
     })
   }
@@ -426,7 +464,8 @@ export class GameLobby {
       chessGame,
       gameSession,
       p2pSession: this.p2pSession,
-      timeControl: timeControl
+      timeControl: timeControl,
+      inviteCode: this.currentInvite?.inviteCode // Pass invite code for display
     })
   }
 
@@ -737,12 +776,14 @@ export class GameLobby {
         100% { transform: rotate(360deg); }
       }
       
-      .saved-games-list {
+      .saved-games-list,
+      .active-games-list {
         max-height: 200px;
         overflow-y: auto;
       }
       
-      .saved-game-item {
+      .saved-game-item,
+      .active-game-item {
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -753,11 +794,13 @@ export class GameLobby {
         transition: all 0.2s;
       }
       
-      .saved-game-item:hover {
+      .saved-game-item:hover,
+      .active-game-item:hover {
         background: #e9ecef;
       }
       
-      .saved-game-info {
+      .saved-game-info,
+      .active-game-info {
         flex: 1;
       }
       
@@ -807,13 +850,50 @@ export class GameLobby {
         background: #c82333;
       }
       
+      .spectate-button {
+        background: #17a2b8;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      
+      .spectate-button:hover {
+        background: #138496;
+      }
+      
+      .active-game-status {
+        display: inline-block;
+        padding: 4px 8px;
+        background: #28a745;
+        color: white;
+        border-radius: 4px;
+        font-size: 12px;
+        margin-left: 8px;
+      }
+      
+      .active-game-status.saved {
+        background: #6c757d;
+      }
+      
       .no-saved-games,
+      .no-active-games,
       .loading-text,
       .error-text {
         text-align: center;
         color: #666;
         font-style: italic;
         padding: 20px;
+      }
+      
+      .no-active-games small {
+        display: block;
+        margin-top: 8px;
+        font-size: 12px;
+        color: #999;
       }
       
       .error-text {
@@ -1010,6 +1090,127 @@ export class GameLobby {
       this.showError('Failed to delete saved game')
     }
   }
+
+
+  /**
+   * Join game as spectator
+   */
+  async spectateGame() {
+    try {
+      const inviteCode = document.getElementById('spectate-invite-code').value.toUpperCase()
+      
+      if (!P2PUtils.isValidInviteCode(inviteCode)) {
+        throw new Error('Please enter a valid invite code (format: XXX-XXX)')
+      }
+
+      this.log('Joining game as spectator with code:', inviteCode)
+      
+      // Show spectating state
+      this.showSpectatingGame()
+
+      // Create chess game instance for spectator
+      const { createGame } = await import('../chess/index.js')
+      const chessGame = createGame({
+        players: { white: 'Player 1', black: 'Player 2' }
+      })
+      chessGame.start()
+
+      // Join P2P game as spectator using the same discovery system
+      const result = await this.p2pSession.joinGameAsSpectator(inviteCode, chessGame)
+
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+
+      this.log('Joined game as spectator successfully:', result)
+
+      // Set up game state monitoring
+      this.p2pSession.gameSync.onGameStateChange = (state, status) => {
+        this.updateSpectateStatus(state, status)
+        
+        if (state === 'active') {
+          this.startSpectatorMode(chessGame, result.gameSession)
+        }
+      }
+
+    } catch (error) {
+      this.log('Failed to join as spectator:', error)
+      this.showError('Failed to spectate game: ' + error.message)
+      this.resetSpectatorUI()
+    }
+  }
+
+  /**
+   * Start spectator mode
+   */
+  startSpectatorMode(chessGame, gameSession) {
+    this.onGameStart({
+      mode: 'spectator',
+      chessGame,
+      gameSession,
+      p2pSession: this.p2pSession,
+      spectating: true
+    })
+  }
+
+  /**
+   * Show spectating game state
+   */
+  showSpectatingGame() {
+    document.getElementById('spectating-game').classList.remove('hidden')
+    document.getElementById('spectate-game-btn').disabled = true
+    document.querySelector('.spectate-game-form').style.display = 'none'
+  }
+
+  /**
+   * Update spectate status
+   */
+  updateSpectateStatus(state, status) {
+    const statusElement = document.getElementById('spectate-status')
+    const message = P2PUtils.formatConnectionStatus(status)
+    
+    if (statusElement) {
+      statusElement.textContent = message
+    }
+
+    // Hide spinner when connected
+    if (state === 'active') {
+      const spinner = document.querySelector('#spectating-game .loading-spinner')
+      if (spinner) {
+        spinner.style.display = 'none'
+      }
+    }
+  }
+
+  /**
+   * Cancel spectating
+   */
+  async cancelSpectate() {
+    if (this.p2pSession) {
+      await this.p2pSession.destroy()
+      await this.initP2P()
+    }
+    
+    this.resetSpectatorUI()
+  }
+
+  /**
+   * Reset spectator UI
+   */
+  resetSpectatorUI() {
+    // Hide status sections
+    document.getElementById('spectating-game').classList.add('hidden')
+    
+    // Show form
+    document.querySelector('.spectate-game-form').style.display = 'block'
+    
+    // Reset button
+    document.getElementById('spectate-game-btn').disabled = false
+    
+    // Clear input
+    document.getElementById('spectate-invite-code').value = ''
+  }
+
 
   /**
    * Log debug messages

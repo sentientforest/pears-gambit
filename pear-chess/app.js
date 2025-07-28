@@ -140,11 +140,18 @@ class PearsGambitApp {
       }
       
       // Add P2P-specific options
-      if (gameData.mode === 'p2p') {
+      if (gameData.mode === 'p2p' || gameData.mode === 'spectator') {
         gameViewOptions.chessGame = gameData.chessGame
         gameViewOptions.p2pSession = gameData.p2pSession
         gameViewOptions.gameSession = gameData.gameSession
         gameViewOptions.timeControl = gameData.timeControl
+        gameViewOptions.spectating = gameData.spectating || false
+        
+        // Pass invite code for display
+        if (gameData.inviteCode) {
+          gameViewOptions.gameSession = gameViewOptions.gameSession || {}
+          gameViewOptions.gameSession.inviteCode = gameData.inviteCode
+        }
       }
       
       this.gameView = new GameView('game-container', gameViewOptions)

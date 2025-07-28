@@ -5,6 +5,7 @@
  */
 
 import { chessBoard } from '../../chess/board.js'
+import { soundManager } from '../sound-manager.js'
 
 /**
  * Chess Board UI Component

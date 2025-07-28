@@ -4,6 +4,8 @@
  * Implements chess time controls and clock display
  */
 
+import { soundManager } from '../sound-manager.js'
+
 /**
  * Chess Clock Component
  * Manages time controls for both players
@@ -265,12 +267,30 @@ export class ChessClockComponent {
     // Subtract elapsed time from current player
     if (this.currentTurn === 'white') {
       this.whiteTime = Math.max(0, this.whiteTime - elapsed)
+      
+      // Play tick sound for low time (under 10 seconds)
+      if (this.whiteTime < 10000 && this.whiteTime > 0) {
+        // Play tick every second
+        if (Math.floor(this.whiteTime / 1000) !== Math.floor((this.whiteTime + elapsed) / 1000)) {
+          soundManager.playClockTick()
+        }
+      }
+      
       if (this.whiteTime === 0) {
         this.handleTimeExpired('white')
         return
       }
     } else {
       this.blackTime = Math.max(0, this.blackTime - elapsed)
+      
+      // Play tick sound for low time (under 10 seconds)
+      if (this.blackTime < 10000 && this.blackTime > 0) {
+        // Play tick every second
+        if (Math.floor(this.blackTime / 1000) !== Math.floor((this.blackTime + elapsed) / 1000)) {
+          soundManager.playClockTick()
+        }
+      }
+      
       if (this.blackTime === 0) {
         this.handleTimeExpired('black')
         return
