@@ -593,20 +593,22 @@ export class GameView {
       return
     }
     
-    // Validate it's the opponent's turn
-    if (move.player === this.playerColor) {
+    // Validate it's not our own move (spectators should see all moves)
+    if (this.playerColor && move.player === this.playerColor) {
       console.log('Ignoring our own move')
       return
     }
     
-    // Validate turn order
-    const expectedTurn = this.game.getTurn()
-    const opponentColor = this.playerColor === 'white' ? 'black' : 'white'
-    if (expectedTurn !== opponentColor) {
-      console.error('Turn order mismatch - expected:', expectedTurn, 'got move from:', opponentColor)
-      this.showError('Turn order synchronization error')
-      this.handleSyncError()
-      return
+    // Validate turn order (skip for spectators)
+    if (this.playerColor) {
+      const expectedTurn = this.game.getTurn()
+      const opponentColor = this.playerColor === 'white' ? 'black' : 'white'
+      if (expectedTurn !== opponentColor) {
+        console.error('Turn order mismatch - expected:', expectedTurn, 'got move from:', opponentColor)
+        this.showError('Turn order synchronization error')
+        this.handleSyncError()
+        return
+      }
     }
     
     // Extract just the fields needed for makeMove

@@ -100,6 +100,31 @@ export class GameDiscovery {
   }
 
   /**
+   * Resolve invite code to game key (for spectators)
+   */
+  async resolveInviteCode(inviteCode) {
+    try {
+      this.log(`Resolving invite code: ${inviteCode}`)
+
+      // Validate invite code format
+      if (!this.isValidInviteCode(inviteCode)) {
+        throw new Error('Invalid invite code format')
+      }
+
+      const gameKey = this.inviteCodeToGameKey(inviteCode)
+      
+      return {
+        success: true,
+        gameKey,
+        inviteCode
+      }
+    } catch (error) {
+      this.log('Failed to resolve invite code:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  /**
    * Join game by invitation code
    */
   async joinGameByInvite(inviteCode, playerConfig = {}) {

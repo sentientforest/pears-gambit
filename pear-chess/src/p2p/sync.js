@@ -333,8 +333,8 @@ export class GameSync {
       return
     }
 
-    // Don't process our own moves
-    if (move.player === this.playerColor) {
+    // Don't process our own moves (but spectators should see all moves)
+    if (this.playerColor && move.player === this.playerColor) {
       this.log('Ignoring our own move')
       return
     }
@@ -535,8 +535,8 @@ export class GameSync {
 
     this.log('Move received from peer:', message.move)
     
-    // Don't process our own moves
-    if (message.move.player === this.playerColor) {
+    // Don't process our own moves (but spectators should see all moves)
+    if (this.playerColor && message.move.player === this.playerColor) {
       this.log('Ignoring our own move echoed back')
       return
     }
@@ -734,7 +734,7 @@ export class GameSync {
         startTime: gameInfo.startTime,
         playerColor: this.playerColor,
         isHost: this.isHost,
-        fen: this.chessGame.toFen(),
+        fen: this.chessGame.getFen(),
         clockState: clockState,
         timeControl: this.timeControl || null
       }
