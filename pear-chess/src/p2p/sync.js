@@ -112,6 +112,29 @@ export class GameSync {
       await this.swarmManager.joinTopic(gameKey, { client: true, server: true })
 
       this.log(`Game created with invite code: ${invitation.inviteCode}, topic: ${this.gameId}`)
+
+      // Register game in shared discovery registry for cross-instance spectating
+      try {
+        const { createSharedDiscoveryRegistry } = await import('./shared-discovery.js')
+        this.sharedRegistry = createSharedDiscoveryRegistry({
+          debug: this.options.debug
+        })
+
+        await this.sharedRegistry.registerGame({
+          gameId: this.gameId,
+          inviteCode: invitation.inviteCode,
+          gameKey: gameKey.toString('hex'),
+          instanceId: this.options.instanceId || 'unknown',
+          playerName: invitation.hostInfo?.playerName || 'Anonymous',
+          timeControl: timeControl
+        })
+
+        this.log('Game registered in shared discovery registry')
+      } catch (registryError) {
+        this.log('Failed to register in shared discovery (non-fatal):', registryError)
+        // Continue without shared registry - this is not critical for basic gameplay
+      }
+
       this.notifyStateChange()
 
       // Save initial game state and connection info
@@ -137,7 +160,7 @@ export class GameSync {
   }
 
   /**
-   * Join an existing game as spectator
+   * Join an existing game as spectator with full historical sync
    */
   async joinGameAsSpectator(inviteCode, chessGame, joinInfo) {
     try {
@@ -149,14 +172,45 @@ export class GameSync {
       this.gameState = 'connecting'
 
       // Use the game key from discovery join info
-      const gameKey = joinInfo.gameKey
+      const gameKey = Buffer.isBuffer(joinInfo.gameKey) ? joinInfo.gameKey : Buffer.from(joinInfo.gameKey, 'hex')
       this.gameId = gameKey.toString('hex')
 
-      // Join the topic as read-only client
-      await this.swarmManager.joinTopic(gameKey, { client: true, server: false })
+      this.log(`Spectator connecting to game ID: ${this.gameId}`)
 
-      this.log(`Successfully joined game topic as spectator: ${this.gameId}, waiting for connection...`)
-      this.notifyStateChange()
+      // Create enhanced spectator sync manager
+      const { createSpectatorSyncManager } = await import('./spectator-sync.js')
+      this.spectatorSync = createSpectatorSyncManager({
+        debug: this.options.debug,
+        storage: this.options.storage + '-spectator',
+        onGameStateUpdate: (gameState) => {
+          this.log('Spectator game state updated:', gameState)
+          this.onMoveReceived({ type: 'state_update', gameState })
+        },
+        onMoveReceived: (move, clockState) => {
+          this.log('Spectator move received:', move)
+          this.onMoveReceived(move, clockState)
+        },
+        onConnectionChange: (state, spectatorState) => {
+          this.log('Spectator connection state:', state)
+          this.gameState = state === 'active' ? 'active' : state
+          this.notifyStateChange()
+        },
+        onError: (error) => {
+          this.log('Spectator sync error:', error)
+          this.onError(error)
+        },
+        onHistoryLoaded: (historyState) => {
+          this.log('Spectator history loaded:', historyState.totalMoves, 'moves')
+          this.gameState = 'active'
+          this.notifyStateChange()
+        }
+      })
+
+      // Join as spectator with complete historical sync
+      const spectatorResult = await this.spectatorSync.joinGame(inviteCode, chessGame, gameKey)
+      if (!spectatorResult.success) {
+        throw new Error(spectatorResult.error)
+      }
 
       // Save connection info
       await this.persistence.saveConnectionInfo(this.gameId, {
@@ -167,26 +221,13 @@ export class GameSync {
         isSpectator: true
       })
 
-      // Check if we already have connections before waiting
-      if (this.swarmManager.hasConnections()) {
-        this.log('Already connected to peers as spectator')
-        this.gameState = 'syncing'
-        this.notifyStateChange()
-      } else {
-        // Wait for peer connection with shorter timeout
-        try {
-          await this.swarmManager.waitForConnections(1, 10000)
-          this.log('Connected to peer successfully as spectator')
-        } catch (timeoutError) {
-          this.log('Timeout waiting for connections, but continuing anyway')
-          // Don't fail - the connection might still happen
-        }
-      }
+      this.log('Successfully joined game as spectator with historical sync')
 
       return {
         success: true,
         gameId: this.gameId,
-        playerColor: null
+        playerColor: null,
+        spectatorSync: this.spectatorSync
       }
     } catch (error) {
       this.log('Failed to join as spectator:', error)
@@ -806,6 +847,21 @@ export class GameSync {
         await this.saveGameState()
       }
 
+      // Unregister from shared discovery registry
+      if (this.sharedRegistry && this.isHost) {
+        const inviteCode = await this.getInviteCode()
+        if (inviteCode) {
+          await this.sharedRegistry.unregisterGame(inviteCode)
+          this.log('Game unregistered from shared discovery registry')
+        }
+        await this.sharedRegistry.destroy()
+      }
+
+      // Cleanup spectator sync if present
+      if (this.spectatorSync) {
+        await this.spectatorSync.destroy()
+      }
+
       if (this.swarmManager) {
         await this.swarmManager.destroy()
       }
@@ -818,6 +874,24 @@ export class GameSync {
     } catch (error) {
       this.log('Error destroying game synchronization:', error)
       throw error
+    }
+  }
+
+  /**
+   * Get invite code for current game
+   */
+  async getInviteCode() {
+    try {
+      if (this.gameId) {
+        const connectionInfo = await this.persistence.loadConnectionInfo(this.gameId)
+        if (connectionInfo.success) {
+          return connectionInfo.connectionInfo.inviteCode
+        }
+      }
+      return null
+    } catch (error) {
+      this.log('Failed to get invite code:', error)
+      return null
     }
   }
 }
