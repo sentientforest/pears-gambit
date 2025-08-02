@@ -48,19 +48,30 @@ export class GameCore {
       // Use Pear's storage system or fallback to provided path
       let storageDir = this.options.storage
       
-      // Generate a unique instance identifier for this app instance
-      const instanceId = this.options.instanceId || this.generateInstanceId()
-      
-      // Try to use Pear's storage system if available
-      if (typeof Pear !== 'undefined' && Pear.config && Pear.config.storage) {
-        storageDir = `${Pear.config.storage}/chess-p2p-${instanceId}`
-        this.log('Using Pear storage with instance ID:', storageDir)
-      } else if (!storageDir || storageDir.startsWith('.')) {
-        // Fallback to a more standard location
-        storageDir = `./pear-chess-storage-${instanceId}`
-        this.log('Using fallback storage with instance ID:', storageDir)
+      // Special handling for spectator mode to avoid database locks
+      if (this.options.spectatorMode) {
+        // Spectators get completely isolated storage to prevent conflicts
+        const spectatorId = `spectator-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        
+        if (typeof Pear !== 'undefined' && Pear.config && Pear.config.storage) {
+          storageDir = `${Pear.config.storage}/chess-spectator-${spectatorId}`
+        } else {
+          storageDir = `./pear-chess-spectator-${spectatorId}`
+        }
+        this.log('Using isolated spectator storage:', storageDir)
       } else {
-        this.log('Using provided storage:', storageDir)
+        // Regular instance-specific storage for players
+        const instanceId = this.options.instanceId || this.generateInstanceId()
+        
+        if (typeof Pear !== 'undefined' && Pear.config && Pear.config.storage) {
+          storageDir = `${Pear.config.storage}/chess-p2p-${instanceId}`
+          this.log('Using Pear storage with instance ID:', storageDir)
+        } else if (!storageDir || storageDir.startsWith('.')) {
+          storageDir = `./pear-chess-storage-${instanceId}`
+          this.log('Using fallback storage with instance ID:', storageDir)
+        } else {
+          this.log('Using provided storage:', storageDir)
+        }
       }
       
       this.store = new Corestore(storageDir)

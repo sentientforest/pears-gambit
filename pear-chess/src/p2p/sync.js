@@ -177,37 +177,36 @@ export class GameSync {
 
       this.log(`Spectator connecting to game ID: ${this.gameId}`)
 
-      // Create enhanced spectator sync manager
-      const { createSpectatorSyncManager } = await import('./spectator-sync.js')
-      this.spectatorSync = createSpectatorSyncManager({
+      // Create network-only spectator manager to avoid database lock conflicts
+      const { createNetworkSpectatorManager } = await import('./network-spectator.js')
+      this.networkSpectator = createNetworkSpectatorManager({
         debug: this.options.debug,
-        storage: this.options.storage + '-spectator',
         onGameStateUpdate: (gameState) => {
-          this.log('Spectator game state updated:', gameState)
+          this.log('Network spectator game state updated:', gameState)
           this.onMoveReceived({ type: 'state_update', gameState })
         },
         onMoveReceived: (move, clockState) => {
-          this.log('Spectator move received:', move)
+          this.log('Network spectator move received:', move)
           this.onMoveReceived(move, clockState)
         },
         onConnectionChange: (state, spectatorState) => {
-          this.log('Spectator connection state:', state)
+          this.log('Network spectator connection state:', state)
           this.gameState = state === 'active' ? 'active' : state
           this.notifyStateChange()
         },
         onError: (error) => {
-          this.log('Spectator sync error:', error)
+          this.log('Network spectator error:', error)
           this.onError(error)
         },
         onHistoryLoaded: (historyState) => {
-          this.log('Spectator history loaded:', historyState.totalMoves, 'moves')
+          this.log('Network spectator history loaded:', historyState.totalMoves, 'moves')
           this.gameState = 'active'
           this.notifyStateChange()
         }
       })
 
-      // Join as spectator with complete historical sync
-      const spectatorResult = await this.spectatorSync.joinGame(inviteCode, chessGame, gameKey)
+      // Join as network-only spectator
+      const spectatorResult = await this.networkSpectator.joinGame(inviteCode, chessGame, gameKey)
       if (!spectatorResult.success) {
         throw new Error(spectatorResult.error)
       }
@@ -227,7 +226,7 @@ export class GameSync {
         success: true,
         gameId: this.gameId,
         playerColor: null,
-        spectatorSync: this.spectatorSync
+        networkSpectator: this.networkSpectator
       }
     } catch (error) {
       this.log('Failed to join as spectator:', error)
@@ -516,6 +515,14 @@ export class GameSync {
           this.handleGameEndMessage(message, peerId)
           break
 
+        case 'spectator_handshake':
+          await this.handleSpectatorHandshake(message, peerId)
+          break
+
+        case 'spectator_full_sync_request':
+          await this.handleSpectatorSyncRequest(message, peerId)
+          break
+
         default:
           this.log(`Unknown message type: ${message.type}`)
       }
@@ -602,6 +609,11 @@ export class GameSync {
   async handleGameStateRequest(peerId) {
     this.log('Sending game state to peer:', peerId)
     await this.sendGameState(peerId)
+    
+    // Also send full sync if this is from a spectator
+    if (this.chessGame) {
+      await this.sendFullGameSync(peerId)
+    }
   }
 
   /**
@@ -689,6 +701,84 @@ export class GameSync {
     // Notify the UI about the game end
     if (this.onGameEnd) {
       this.onGameEnd(message.result, message.clockState)
+    }
+  }
+
+  /**
+   * Handle spectator handshake
+   */
+  async handleSpectatorHandshake(message, peerId) {
+    if (message.gameId !== this.gameId) {
+      this.log('Spectator handshake for different game, ignoring')
+      return
+    }
+
+    this.log('Spectator handshake received from peer:', peerId)
+
+    // Send welcome message
+    const welcome = {
+      type: 'spectator_welcome',
+      gameId: this.gameId,
+      timestamp: Date.now(),
+      players: this.chessGame ? {
+        white: this.chessGame.getGameInfo()?.players?.white || 'Player 1',
+        black: this.chessGame.getGameInfo()?.players?.black || 'Player 2'
+      } : null
+    }
+
+    this.swarmManager.sendToPeer(peerId, welcome)
+
+    // If spectator requested full sync, send it
+    if (message.requestFullSync) {
+      await this.sendFullGameSync(peerId)
+    }
+  }
+
+  /**
+   * Handle spectator sync request
+   */
+  async handleSpectatorSyncRequest(message, peerId) {
+    if (message.gameId !== this.gameId) {
+      this.log('Spectator sync request for different game, ignoring')
+      return
+    }
+
+    this.log('Spectator sync request received from peer:', peerId)
+    await this.sendFullGameSync(peerId)
+  }
+
+  /**
+   * Send full game synchronization to spectator
+   */
+  async sendFullGameSync(peerId) {
+    try {
+      this.log('Sending full game sync to spectator:', peerId)
+
+      // Get complete move history from game core
+      const moves = await this.gameCore.getMoves()
+      const currentFen = this.chessGame ? this.chessGame.getFen() : null
+      const gameInfo = this.chessGame ? this.chessGame.getGameInfo() : null
+
+      const syncMessage = {
+        type: 'full_game_sync',
+        gameId: this.gameId,
+        moveHistory: moves,
+        currentFen: currentFen,
+        gameInfo: {
+          currentTurn: gameInfo?.currentTurn || 'white',
+          moveCount: moves.length,
+          isGameOver: gameInfo?.isGameOver || false,
+          result: gameInfo?.result || null
+        },
+        players: gameInfo?.players || { white: 'Player 1', black: 'Player 2' },
+        timestamp: Date.now()
+      }
+
+      this.swarmManager.sendToPeer(peerId, syncMessage)
+      this.log(`Sent full sync with ${moves.length} moves to spectator`)
+
+    } catch (error) {
+      this.log('Failed to send full game sync:', error)
     }
   }
 
@@ -857,9 +947,9 @@ export class GameSync {
         await this.sharedRegistry.destroy()
       }
 
-      // Cleanup spectator sync if present
-      if (this.spectatorSync) {
-        await this.spectatorSync.destroy()
+      // Cleanup network spectator if present
+      if (this.networkSpectator) {
+        await this.networkSpectator.destroy()
       }
 
       if (this.swarmManager) {

@@ -37,16 +37,20 @@ export class GameHistoryManager {
   /**
    * Connect to game for historical analysis
    */
-  async connectToGame(gameKey, gameId) {
+  async connectToGame(gameKey, gameId, customStorage = null) {
     try {
       this.log('Connecting to game for historical analysis:', gameId)
 
-      // Create read-only game core
+      // Use custom storage if provided to avoid lock conflicts
+      const storageDir = customStorage || this.options.storage
+
+      // Create read-only game core with spectator-specific configuration
       this.gameCore = createGameCore({
         gameId: gameId,
-        storage: this.options.storage,
+        storage: storageDir,
         debug: this.options.debug,
         writable: false, // Read-only for history analysis
+        spectatorMode: true, // Special flag for spectator cores
         onMove: this.handleHistoricalMove.bind(this),
         onError: this.handleCoreError.bind(this)
       })

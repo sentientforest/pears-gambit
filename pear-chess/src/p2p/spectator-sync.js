@@ -84,8 +84,9 @@ export class SpectatorSyncManager {
       this.connectionState = 'syncing'
       this.notifyConnectionChange()
 
-      // Connect to game history (this will load complete move history)
-      const historyResult = await this.historyManager.connectToGame(gameKey, this.gameId)
+      // Connect to game history with spectator-specific storage to avoid lock conflicts
+      const spectatorStorage = `${this.options.storage}-${this.gameId}-spectator`
+      const historyResult = await this.historyManager.connectToGame(gameKey, this.gameId, spectatorStorage)
       if (!historyResult.success) {
         throw new Error(`Failed to load game history: ${historyResult.error}`)
       }
