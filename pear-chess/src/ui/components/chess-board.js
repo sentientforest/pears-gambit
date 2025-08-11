@@ -211,9 +211,9 @@ export class ChessBoardComponent {
       this.boardElement.addEventListener('touchend', this.handleTouchEnd.bind(this))
       
       // Global mouse up to catch drags that end outside the board
-      document.addEventListener('mouseup', (event) => {
+      document.addEventListener('mouseup', async (event) => {
         if (this.draggedPiece) {
-          this.completeDrag(null) // Complete drag without move
+          await this.completeDrag(null) // Complete drag without move
         }
       })
     }
@@ -252,12 +252,12 @@ export class ChessBoardComponent {
   /**
    * Handle mouse up
    */
-  handleMouseUp(event) {
+  async handleMouseUp(event) {
     if (!this.draggedPiece) return
     
     event.preventDefault()
     const targetSquare = this.getSquareFromEvent(event)
-    this.completeDrag(targetSquare)
+    await this.completeDrag(targetSquare)
   }
 
   /**
@@ -372,7 +372,7 @@ export class ChessBoardComponent {
   /**
    * Complete drag operation
    */
-  completeDrag(targetSquare) {
+  async completeDrag(targetSquare) {
     if (!this.draggedPiece) return
     
     const fromSquare = this.draggedPiece.square
@@ -385,7 +385,7 @@ export class ChessBoardComponent {
     
     // Attempt move
     if (targetSquare && targetSquare !== fromSquare) {
-      this.attemptMove(fromSquare, targetSquare)
+      await this.attemptMove(fromSquare, targetSquare)
     }
     
     this.clearSelection()
@@ -473,7 +473,7 @@ export class ChessBoardComponent {
   /**
    * Attempt to make a move
    */
-  attemptMove(from, to) {
+  async attemptMove(from, to) {
     const move = { from, to }
     
     // Check if promotion is needed
@@ -481,7 +481,8 @@ export class ChessBoardComponent {
     if (piece && piece.type === 'p') {
       const toRank = parseInt(to[1])
       if ((piece.color === 'w' && toRank === 8) || (piece.color === 'b' && toRank === 1)) {
-        move.promotion = this.getPromotionChoice()
+        const pieceColor = piece.color === 'w' ? 'white' : 'black'
+        move.promotion = await this.getPromotionChoice(pieceColor)
       }
     }
     
@@ -491,11 +492,124 @@ export class ChessBoardComponent {
   /**
    * Get promotion choice from user
    */
-  getPromotionChoice() {
-    // Simple prompt for now - in a real UI this would be a modal
-    const choices = ['q', 'r', 'b', 'n']
-    const choice = prompt('Promote to (q/r/b/n):')
-    return choices.includes(choice) ? choice : 'q'
+  async getPromotionChoice(color = 'white') {
+    return new Promise((resolve) => {
+      // Create promotion modal
+      const modal = this.createPromotionModal(color, (piece) => {
+        resolve(piece)
+      })
+      
+      // Add to DOM
+      document.body.appendChild(modal)
+      
+      // Focus on queen by default
+      modal.querySelector('[data-piece="q"]').focus()
+    })
+  }
+
+  /**
+   * Create promotion modal UI
+   */
+  createPromotionModal(color, onSelect) {
+    const modal = document.createElement('div')
+    modal.className = 'promotion-modal-overlay'
+    
+    const dialog = document.createElement('div')
+    dialog.className = 'promotion-modal'
+    
+    const title = document.createElement('h3')
+    title.textContent = 'Choose promotion piece:'
+    dialog.appendChild(title)
+    
+    const piecesContainer = document.createElement('div')
+    piecesContainer.className = 'promotion-pieces'
+    
+    const pieces = [
+      { piece: 'q', name: 'Queen' },
+      { piece: 'r', name: 'Rook' },
+      { piece: 'b', name: 'Bishop' },
+      { piece: 'n', name: 'Knight' }
+    ]
+    
+    pieces.forEach((pieceInfo, index) => {
+      const pieceButton = document.createElement('button')
+      pieceButton.className = 'promotion-piece-btn'
+      pieceButton.setAttribute('data-piece', pieceInfo.piece)
+      
+      // Create piece symbol
+      const pieceSymbol = this.getPieceSymbol(color, pieceInfo.piece)
+      pieceButton.innerHTML = `
+        <div class="piece-symbol">${pieceSymbol}</div>
+        <div class="piece-name">${pieceInfo.name}</div>
+      `
+      
+      pieceButton.onclick = () => {
+        this.closePromotionModal(modal)
+        onSelect(pieceInfo.piece)
+      }
+      
+      // Add keyboard navigation
+      pieceButton.onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          pieceButton.click()
+        } else if (e.key === 'ArrowLeft' && index > 0) {
+          pieces[index - 1] && piecesContainer.children[index - 1].focus()
+        } else if (e.key === 'ArrowRight' && index < pieces.length - 1) {
+          pieces[index + 1] && piecesContainer.children[index + 1].focus()
+        } else if (e.key === 'Escape') {
+          this.closePromotionModal(modal)
+          onSelect('q') // Default to queen on escape
+        }
+      }
+      
+      piecesContainer.appendChild(pieceButton)
+    })
+    
+    dialog.appendChild(piecesContainer)
+    
+    // Add instructions
+    const instructions = document.createElement('p')
+    instructions.className = 'promotion-instructions'
+    instructions.textContent = 'Click a piece or use arrow keys and Enter'
+    dialog.appendChild(instructions)
+    
+    modal.appendChild(dialog)
+    
+    // Close on overlay click
+    modal.onclick = (e) => {
+      if (e.target === modal) {
+        this.closePromotionModal(modal)
+        onSelect('q') // Default to queen
+      }
+    }
+    
+    return modal
+  }
+
+  /**
+   * Get piece symbol for promotion modal
+   */
+  getPieceSymbol(color, piece) {
+    const symbols = {
+      white: {
+        q: '♕', r: '♖', b: '♗', n: '♘'
+      },
+      black: {
+        q: '♛', r: '♜', b: '♝', n: '♞'
+      }
+    }
+    
+    return symbols[color]?.[piece] || '♕'
+  }
+
+  /**
+   * Close promotion modal
+   */
+  closePromotionModal(modal) {
+    if (modal && modal.parentNode) {
+      modal.parentNode.removeChild(modal)
+    }
   }
 
   /**
@@ -703,6 +817,111 @@ export class ChessBoardComponent {
         display: flex;
         align-items: center;
         justify-content: center;
+      }
+
+      /* Promotion modal styles */
+      .promotion-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        backdrop-filter: blur(2px);
+      }
+
+      .promotion-modal {
+        background: white;
+        border-radius: 12px;
+        padding: 30px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        text-align: center;
+        min-width: 350px;
+        max-width: 90vw;
+      }
+
+      .promotion-modal h3 {
+        margin: 0 0 20px 0;
+        color: #333;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .promotion-pieces {
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+        margin: 20px 0;
+      }
+
+      .promotion-piece-btn {
+        background: white;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        min-width: 70px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+      }
+
+      .promotion-piece-btn:hover {
+        border-color: #007bff;
+        background: #f8f9fa;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 123, 255, 0.2);
+      }
+
+      .promotion-piece-btn:focus {
+        outline: none;
+        border-color: #007bff;
+        background: #e3f2fd;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+      }
+
+      .promotion-piece-btn .piece-symbol {
+        font-size: 28px;
+        line-height: 1;
+      }
+
+      .promotion-piece-btn .piece-name {
+        font-size: 12px;
+        color: #666;
+        font-weight: 500;
+      }
+
+      .promotion-instructions {
+        margin: 15px 0 0 0;
+        color: #666;
+        font-size: 14px;
+      }
+
+      /* Responsive adjustments */
+      @media (max-width: 480px) {
+        .promotion-modal {
+          padding: 20px;
+          min-width: 300px;
+        }
+
+        .promotion-pieces {
+          gap: 10px;
+        }
+
+        .promotion-piece-btn {
+          padding: 12px;
+          min-width: 60px;
+        }
+
+        .promotion-piece-btn .piece-symbol {
+          font-size: 24px;
+        }
       }
     `
   }
