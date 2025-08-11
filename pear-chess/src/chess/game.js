@@ -80,6 +80,9 @@ export class ChessGame {
     this.onMove = options.onMove || (() => {})
     this.onGameEnd = options.onGameEnd || (() => {})
     this.onCheck = options.onCheck || (() => {})
+    
+    // Debug flag
+    this.debug = options.debug || false
   }
 
   /**
@@ -376,5 +379,14 @@ export class ChessGame {
       return true
     }
     return false
+  }
+
+  /**
+   * Debug logging
+   */
+  log(...args) {
+    if (this.debug) {
+      console.log('[ChessGame]', ...args)
+    }
   }
 }

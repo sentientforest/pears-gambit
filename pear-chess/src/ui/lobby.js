@@ -177,15 +177,31 @@ export class GameLobby {
 
         <div class="lobby-section" id="spectator-section">
           <h3>Watch Game</h3>
-          <p>Enter an invite code to spectate an ongoing game</p>
-          <div class="spectate-game-form">
-            <div class="form-group">
-              <label for="spectate-invite-code">Invite Code:</label>
-              <input type="text" id="spectate-invite-code" placeholder="XXX-XXX" maxlength="7">
-              <small>Enter the 6-character invite code from the players</small>
+          
+          <!-- Available Games Discovery -->
+          <div class="available-games-container">
+            <h4>Available Games</h4>
+            <div id="available-games-list" class="available-games-list">
+              <p class="loading-text">Looking for active games...</p>
             </div>
-            
-            <button id="spectate-game-btn" class="primary-button">Watch Game</button>
+            <button id="refresh-games-btn" class="secondary-button">🔄 Refresh</button>
+          </div>
+          
+          <div class="lobby-divider-small">OR</div>
+          
+          <!-- Manual Code Entry -->
+          <div class="manual-spectate-container">
+            <h4>Enter Invite Code</h4>
+            <p>Enter an invite code to spectate a specific game</p>
+            <div class="spectate-game-form">
+              <div class="form-group">
+                <label for="spectate-invite-code">Invite Code:</label>
+                <input type="text" id="spectate-invite-code" placeholder="XXX-XXX" maxlength="7">
+                <small>Enter the 6-character invite code from the players</small>
+              </div>
+              
+              <button id="spectate-game-btn" class="primary-button">Watch Game</button>
+            </div>
           </div>
           
           <div id="spectating-game" class="spectating-game hidden">
@@ -202,6 +218,7 @@ export class GameLobby {
 
     this.addStyles()
     this.loadSavedGames()
+    this.loadAvailableGames()
   }
 
   /**
@@ -255,6 +272,11 @@ export class GameLobby {
     // Auto-format spectate invite code input
     document.getElementById('spectate-invite-code').addEventListener('input', (e) => {
       this.formatInviteCode(e.target)
+    })
+
+    // Refresh available games
+    document.getElementById('refresh-games-btn').addEventListener('click', () => {
+      this.loadAvailableGames()
     })
   }
 
@@ -634,6 +656,34 @@ export class GameLobby {
         z-index: 2;
       }
       
+      .lobby-divider-small {
+        text-align: center;
+        color: #999;
+        font-weight: bold;
+        margin: 20px 0;
+        position: relative;
+      }
+      
+      .lobby-divider-small::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: #ddd;
+        z-index: 1;
+      }
+      
+      .lobby-divider-small::after {
+        content: 'OR';
+        background: #f5f5f5;
+        padding: 0 15px;
+        position: relative;
+        z-index: 2;
+        font-size: 12px;
+      }
+      
       .form-group {
         margin-bottom: 20px;
       }
@@ -777,13 +827,15 @@ export class GameLobby {
       }
       
       .saved-games-list,
-      .active-games-list {
+      .active-games-list,
+      .available-games-list {
         max-height: 200px;
         overflow-y: auto;
       }
       
       .saved-game-item,
-      .active-game-item {
+      .active-game-item,
+      .available-game-item {
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -795,13 +847,46 @@ export class GameLobby {
       }
       
       .saved-game-item:hover,
-      .active-game-item:hover {
+      .active-game-item:hover,
+      .available-game-item:hover {
         background: #e9ecef;
       }
       
       .saved-game-info,
-      .active-game-info {
+      .active-game-info,
+      .available-game-info {
         flex: 1;
+      }
+      
+      .available-game-title {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 4px;
+      }
+      
+      .available-game-details {
+        font-size: 12px;
+        color: #666;
+      }
+      
+      .available-game-actions {
+        display: flex;
+        gap: 8px;
+      }
+      
+      .available-games-container h4,
+      .manual-spectate-container h4 {
+        margin: 0 0 15px 0;
+        color: #555;
+        font-size: 16px;
+      }
+      
+      .available-games-container {
+        margin-bottom: 20px;
+      }
+      
+      .manual-spectate-container {
+        margin-top: 20px;
       }
       
       .saved-game-players {
@@ -1088,6 +1173,134 @@ export class GameLobby {
     } catch (error) {
       this.log('Failed to delete saved game:', error)
       this.showError('Failed to delete saved game')
+    }
+  }
+
+  /**
+   * Load and display available games from shared discovery registry
+   */
+  async loadAvailableGames() {
+    try {
+      this.log('Loading available games from shared registry...')
+      
+      const listContainer = document.getElementById('available-games-list')
+      if (!listContainer) return
+
+      // Show loading state
+      listContainer.innerHTML = '<p class="loading-text">Looking for active games...</p>'
+
+      // Create shared discovery registry
+      const { createSharedDiscoveryRegistry } = await import('../p2p/shared-discovery.js')
+      const sharedRegistry = createSharedDiscoveryRegistry({
+        debug: this.options.debug
+      })
+
+      // Find available games (excluding our own)
+      const result = await sharedRegistry.findAvailableGames({
+        excludeOwnGames: true
+      })
+
+      if (!result.success) {
+        listContainer.innerHTML = '<p class="error-text">Failed to load available games</p>'
+        return
+      }
+
+      const availableGames = result.games || []
+      this.log(`Found ${availableGames.length} available games`)
+
+      if (availableGames.length === 0) {
+        listContainer.innerHTML = `
+          <div class="no-active-games">
+            <p>No active games found</p>
+            <small>Create a game and others will be able to spectate it!</small>
+          </div>
+        `
+        return
+      }
+
+      // Clear container and add games
+      listContainer.innerHTML = ''
+
+      availableGames.forEach((game, index) => {
+        const gameItem = document.createElement('div')
+        gameItem.className = 'available-game-item'
+        
+        const gameInfo = document.createElement('div')
+        gameInfo.className = 'available-game-info'
+        
+        const gameTitle = document.createElement('div')
+        gameTitle.className = 'available-game-title'
+        gameTitle.textContent = `${game.hostPlayer}'s Game`
+        
+        const gameDetails = document.createElement('div')
+        gameDetails.className = 'available-game-details'
+        
+        const timeControlText = game.timeControl ? 
+          `${game.timeControl.minutes}+${game.timeControl.increment || 0}` : 
+          'No time limit'
+        
+        const ageText = this.formatGameAge(game.age)
+        gameDetails.textContent = `${game.inviteCode} • ${timeControlText} • ${ageText} ago`
+        
+        gameInfo.appendChild(gameTitle)
+        gameInfo.appendChild(gameDetails)
+        
+        const actions = document.createElement('div')
+        actions.className = 'available-game-actions'
+        
+        const spectateBtn = document.createElement('button')
+        spectateBtn.className = 'spectate-button'
+        spectateBtn.textContent = '👁️ Watch'
+        spectateBtn.onclick = () => this.spectateGameFromList(game)
+        
+        actions.appendChild(spectateBtn)
+        
+        gameItem.appendChild(gameInfo)
+        gameItem.appendChild(actions)
+        
+        listContainer.appendChild(gameItem)
+      })
+
+      // Cleanup registry
+      await sharedRegistry.destroy()
+      
+    } catch (error) {
+      this.log('Failed to load available games:', error)
+      const listContainer = document.getElementById('available-games-list')
+      if (listContainer) {
+        listContainer.innerHTML = '<p class="error-text">Failed to load available games</p>'
+      }
+    }
+  }
+
+  /**
+   * Format game age for display
+   */
+  formatGameAge(ageMs) {
+    const minutes = Math.floor(ageMs / 60000)
+    if (minutes < 1) return 'Just now'
+    if (minutes < 60) return `${minutes}m`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h`
+    const days = Math.floor(hours / 24)
+    return `${days}d`
+  }
+
+  /**
+   * Spectate a game from the available games list
+   */
+  async spectateGameFromList(game) {
+    try {
+      this.log('Spectating game from list:', game)
+      
+      // Fill in the invite code
+      document.getElementById('spectate-invite-code').value = game.inviteCode
+      
+      // Trigger spectate
+      await this.spectateGame()
+    } catch (error) {
+      this.log('Failed to spectate game from list:', error)
+      this.showError('Failed to join game: ' + error.message)
     }
   }
 
