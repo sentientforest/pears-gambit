@@ -6,6 +6,7 @@
 
 import { ChessBoardComponent } from './components/chess-board.js'
 import { ChessClockComponent } from './components/chess-clock.js'
+import { AnalysisPanelComponent } from './components/analysis-panel.js'
 import { createGame, chessBoard } from '../chess/index.js'
 import { soundManager } from './sound-manager.js'
 
@@ -25,6 +26,7 @@ export class GameView {
       showControls: options.showControls !== false,
       showMoveHistory: options.showMoveHistory !== false,
       showGameInfo: options.showGameInfo !== false,
+      showAnalysis: options.showAnalysis !== false,
       mode: options.mode || 'single-player', // single-player, p2p, spectator
       spectating: options.spectating || false,
       ...options
@@ -34,6 +36,7 @@ export class GameView {
     this.game = options.chessGame || null
     this.chessBoard = null
     this.chessClock = null
+    this.analysisPanel = null
     this.gameState = 'waiting' // waiting, active, paused, finished
     this.timeControl = options.timeControl || null
     this.lastClockSave = null
@@ -49,6 +52,7 @@ export class GameView {
     this.controlsContainer = null
     this.moveHistoryContainer = null
     this.gameInfoContainer = null
+    this.analysisContainer = null
     this.clockContainer = null
 
     this.init()
@@ -65,6 +69,7 @@ export class GameView {
     this.createControls()
     this.createMoveHistory()
     this.createGameInfo()
+    this.createAnalysisPanel()
     this.bindEvents()
     
     // Start a new game
@@ -119,6 +124,13 @@ export class GameView {
       this.moveHistoryContainer = document.createElement('div')
       this.moveHistoryContainer.className = 'move-history'
       sidePanel.appendChild(this.moveHistoryContainer)
+    }
+
+    if (this.options.showAnalysis) {
+      this.analysisContainer = document.createElement('div')
+      this.analysisContainer.id = 'analysis-panel-container'
+      this.analysisContainer.className = 'analysis-panel-container'
+      sidePanel.appendChild(this.analysisContainer)
     }
 
     layout.appendChild(gameArea)
@@ -303,6 +315,36 @@ export class GameView {
         </div>
       </div>
     `
+  }
+
+  /**
+   * Create analysis panel
+   */
+  createAnalysisPanel() {
+    if (!this.analysisContainer) return
+    
+    try {
+      this.analysisPanel = new AnalysisPanelComponent(this.analysisContainer, {
+        autoAnalyze: this.options.mode === 'single-player', // Auto-analyze in single-player mode
+        showDepthSelector: true,
+        showMultiPV: true,
+        maxLines: 3
+      })
+      
+      console.log('[GameView] Analysis panel created')
+    } catch (error) {
+      console.error('[GameView] Failed to create analysis panel:', error)
+      // Show a simple message if analysis is unavailable
+      this.analysisContainer.innerHTML = `
+        <div class="analysis-unavailable">
+          <h3>Analysis</h3>
+          <p style="color: #888; font-size: 14px;">
+            Chess analysis unavailable.<br>
+            Install Stockfish to enable AI analysis.
+          </p>
+        </div>
+      `
+    }
   }
 
   /**
@@ -951,6 +993,12 @@ export class GameView {
     // Update game info
     this.updateGameInfo()
     this.updateMoveHistory()
+    
+    // Update analysis panel with current position
+    if (this.analysisPanel && this.game) {
+      const currentFen = this.game.fen()
+      this.analysisPanel.setPosition(currentFen)
+    }
   }
 
   /**
