@@ -3,6 +3,32 @@ chess-games
 chess-games-state
 pear-chess-storage-*
 
+# Build artifacts
+build/
+deps/
+prebuilds/
+*.node
+*.so
+*.dylib
+*.dll
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Stockfish binaries and builds
+stockfish
+stockfish.exe
+stockfish-*
+
+# Temporary files
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
 
 
 
