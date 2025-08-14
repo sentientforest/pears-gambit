@@ -4,53 +4,44 @@
  * Main entry point for AI and analysis features
  */
 
-export { UCIProtocol } from './uci-protocol.js'
-export { ExternalStockfishEngine } from './external-engine.js'
-export { StockfishManager } from './stockfish-manager.js'
-export { PositionAnalysis } from './analysis.js'
-export { HintSystem } from './hints.js'
+export { OpeningBook } from './opening-book.js'
+export { StubEngine, StubGameAnalyzer } from './engine-stub.js'
 
-import { StockfishManager } from './stockfish-manager.js'
-import { PositionAnalysis } from './analysis.js'
-import { HintSystem } from './hints.js'
+import { OpeningBook } from './opening-book.js'
+import { StubEngine, StubGameAnalyzer } from './engine-stub.js'
 
 /**
  * Create a Stockfish analysis instance
  * @param {Object} options - Configuration options
- * @returns {StockfishManager} Stockfish manager instance
+ * @returns {StubEngine} Stockfish engine instance (stub)
  */
 export function createStockfishAnalysis(options = {}) {
-  return new StockfishManager({
-    autoStart: true,
-    multiPV: 3,
+  return new StubEngine({
+    debug: false,
     ...options
   })
 }
 
 /**
- * Create a position analyzer
+ * Create a game analyzer
  * @param {Object} options - Configuration options
- * @returns {PositionAnalysis} Position analysis instance
+ * @returns {StubGameAnalyzer} Game analyzer instance (stub)
  */
-export function createPositionAnalyzer(options = {}) {
-  return new PositionAnalysis({
-    autoAnalyze: true,
-    analysisDepth: 20,
+export function createGameAnalyzer(options = {}) {
+  return new StubGameAnalyzer({
+    engineDepth: 15,
+    debug: false,
     ...options
   })
 }
 
 /**
- * Create a hint system
+ * Create an opening book
  * @param {Object} options - Configuration options
- * @returns {HintSystem} Hint system instance
+ * @returns {OpeningBook} Opening book instance
  */
-export function createHintSystem(options = {}) {
-  return new HintSystem({
-    skillLevel: 'intermediate',
-    teachingMode: true,
-    ...options
-  })
+export function createOpeningBook(options = {}) {
+  return new OpeningBook(options)
 }
 
 /**
@@ -59,8 +50,8 @@ export function createHintSystem(options = {}) {
 class AIModule {
   constructor() {
     this.stockfish = null
-    this.analyzer = null
-    this.hints = null
+    this.gameAnalyzer = null
+    this.openingBook = null
     this.initialized = false
   }
 
@@ -73,22 +64,23 @@ class AIModule {
       return
     }
 
-    // Create shared Stockfish instance
-    this.stockfish = createStockfishAnalysis(options)
-    
-    // Create analyzer with shared Stockfish
-    this.analyzer = createPositionAnalyzer({
-      stockfish: this.stockfish,
-      ...options
-    })
-    
-    // Create hint system with shared analyzer
-    this.hints = createHintSystem({
-      analysis: this.analyzer,
-      ...options
-    })
+    try {
+      // Create Stockfish engine instance
+      this.stockfish = createStockfishAnalysis(options)
+      await this.stockfish.start()
+      
+      // Create game analyzer
+      this.gameAnalyzer = createGameAnalyzer(options)
+      await this.gameAnalyzer.initialize()
+      
+      // Create opening book
+      this.openingBook = createOpeningBook(options)
 
-    this.initialized = true
+      this.initialized = true
+    } catch (error) {
+      console.error('Failed to initialize AI module:', error)
+      throw error
+    }
   }
 
   /**
@@ -101,7 +93,7 @@ class AIModule {
     if (!this.initialized) {
       await this.initialize()
     }
-    return this.analyzer.analyze(fen, options)
+    return this.stockfish.analyze(fen, options)
   }
 
   /**
@@ -114,65 +106,62 @@ class AIModule {
     if (!this.initialized) {
       await this.initialize()
     }
-    return this.stockfish.getBestMove(fen, options)
+    await this.stockfish.position(fen)
+    const result = await this.stockfish.go(options)
+    return result.bestMove
   }
 
   /**
-   * Get hints for a position
-   * @param {string} fen - Position FEN
-   * @param {Object} context - Game context
-   * @returns {Object} Hints and suggestions
+   * Get opening information for position
+   * @param {string[]} moves - Array of moves
+   * @returns {Object} Opening information
    */
-  async getHints(fen, context = {}) {
+  getOpening(moves) {
+    if (!this.openingBook) {
+      return { name: 'Unknown', eco: '---', description: 'Opening book not loaded' }
+    }
+    return this.openingBook.getOpening(moves)
+  }
+
+  /**
+   * Analyze a complete game
+   * @param {Object} gameData - Game data (moves array or PGN)
+   * @returns {Object} Complete game analysis
+   */
+  async analyzeGame(gameData) {
     if (!this.initialized) {
       await this.initialize()
     }
-    return this.hints.getHints(fen, context)
+    return this.gameAnalyzer.analyzeGame(gameData)
   }
 
   /**
-   * Analyze move quality
-   * @param {string} fenBefore - Position before move
-   * @param {string} fenAfter - Position after move
-   * @param {string} move - Move played
-   * @returns {Object} Move quality analysis
-   */
-  async analyzeMoveQuality(fenBefore, fenAfter, move) {
-    if (!this.initialized) {
-      await this.initialize()
-    }
-    return this.hints.analyzeMoveQuality(fenBefore, fenAfter, move)
-  }
-
-  /**
-   * Start continuous analysis
+   * Start continuous analysis (placeholder)
    * @param {string} fen - Position to analyze
    */
   async startContinuousAnalysis(fen) {
-    if (!this.initialized) {
-      await this.initialize()
-    }
-    return this.stockfish.startContinuousAnalysis(fen)
+    // For now, just analyze once
+    return this.analyzePosition(fen)
   }
 
   /**
-   * Stop continuous analysis
+   * Stop continuous analysis (placeholder)
    */
   async stopContinuousAnalysis() {
-    if (this.stockfish) {
-      return this.stockfish.stopContinuousAnalysis()
-    }
+    // Placeholder - would stop ongoing analysis
+    return true
   }
 
   /**
-   * Set engine strength
-   * @param {number} level - Skill level (0-20)
+   * Set engine options
+   * @param {string} name - Option name
+   * @param {string} value - Option value
    */
-  async setStrength(level) {
+  async setOption(name, value) {
     if (!this.initialized) {
       await this.initialize()
     }
-    return this.stockfish.setStrength(level)
+    return this.stockfish.setOption(name, value)
   }
 
   /**
@@ -182,9 +171,9 @@ class AIModule {
   getStatus() {
     return {
       initialized: this.initialized,
-      stockfishStatus: this.stockfish?.getStatus() || null,
-      analyzerActive: this.analyzer?.isAnalyzing || false,
-      hintsAvailable: this.hints !== null
+      stockfishReady: this.stockfish?.isReady || false,
+      openingBookLoaded: this.openingBook !== null,
+      gameAnalyzerReady: this.gameAnalyzer !== null
     }
   }
 
@@ -192,21 +181,17 @@ class AIModule {
    * Shutdown the AI module
    */
   async shutdown() {
-    if (this.hints) {
-      await this.hints.shutdown()
-      this.hints = null
-    }
-    
-    if (this.analyzer) {
-      await this.analyzer.shutdown()
-      this.analyzer = null
+    if (this.gameAnalyzer) {
+      await this.gameAnalyzer.shutdown()
+      this.gameAnalyzer = null
     }
     
     if (this.stockfish) {
-      await this.stockfish.shutdown()
+      await this.stockfish.quit()
       this.stockfish = null
     }
     
+    this.openingBook = null
     this.initialized = false
   }
 }
@@ -218,6 +203,6 @@ export const AI = new AIModule()
 export default {
   AI,
   createStockfishAnalysis,
-  createPositionAnalyzer,
-  createHintSystem
+  createGameAnalyzer,
+  createOpeningBook
 }

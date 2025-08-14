@@ -126,6 +126,13 @@ export class ChessGame {
   }
 
   /**
+   * Alias for getFen() for compatibility with chess.js API
+   */
+  fen() {
+    return this.chess.fen()
+  }
+
+  /**
    * Load game state from FEN string
    * @param {string} fen - FEN notation string
    */

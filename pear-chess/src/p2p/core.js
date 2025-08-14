@@ -74,8 +74,34 @@ export class GameCore {
         }
       }
       
-      this.store = new Corestore(storageDir)
-      await this.store.ready()
+      // Try to create the store with retry logic for database locks
+      let retryCount = 0
+      const maxRetries = 3
+      
+      while (retryCount < maxRetries) {
+        try {
+          this.store = new Corestore(storageDir)
+          await this.store.ready()
+          break
+        } catch (error) {
+          retryCount++
+          this.log(`Database lock attempt ${retryCount}/${maxRetries}:`, error.message)
+          
+          if (retryCount >= maxRetries) {
+            // Generate a new unique storage path and try once more
+            const fallbackId = `fallback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+            const fallbackStorage = storageDir.replace(/[^/]+$/, '') + fallbackId
+            this.log('Using fallback storage path:', fallbackStorage)
+            
+            this.store = new Corestore(fallbackStorage)
+            await this.store.ready()
+            break
+          }
+          
+          // Wait before retry
+          await new Promise(resolve => setTimeout(resolve, 100 * retryCount))
+        }
+      }
 
       // Create autobase for multi-writer coordination
       this.gameBase = new Autobase(this.store, null, {
@@ -100,22 +126,32 @@ export class GameCore {
    * Generate a unique instance identifier
    */
   generateInstanceId() {
-    // Use process ID if available, otherwise use timestamp + random
-    if (typeof process !== 'undefined' && process.pid) {
-      return `pid${process.pid}`
-    }
-    
-    // Fallback to timestamp + random for browsers/other environments
+    // Always use high-precision timestamp + random to avoid collisions
     const timestamp = Date.now().toString(36)
-    const random = Math.random().toString(36).substring(2, 8)
-    return `${timestamp}-${random}`
+    const random = Math.random().toString(36).substring(2, 12)
+    const performance = typeof window !== 'undefined' && window.performance 
+      ? window.performance.now().toString(36).replace('.', '') 
+      : ''
+    
+    // Include process ID if available
+    const pid = typeof process !== 'undefined' && process.pid 
+      ? `pid${process.pid}` 
+      : ''
+    
+    // Combine all sources for maximum uniqueness
+    return `${timestamp}-${random}${performance}${pid}`.substring(0, 20)
   }
 
   /**
    * Open view for Autobase - creates the view hypercore
    */
   openView(store) {
-    return store.get('chess-moves', { valueEncoding: moveEncoding })
+    try {
+      return store.get('chess-moves', { valueEncoding: moveEncoding })
+    } catch (error) {
+      this.log('Failed to open view:', error)
+      throw new Error(`Database access failed: ${error.message}`)
+    }
   }
 
   /**

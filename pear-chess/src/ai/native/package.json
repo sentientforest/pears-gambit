@@ -1,0 +1,42 @@
+{
+  "name": "pear-chess-stockfish-native",
+  "version": "1.0.0",
+  "description": "Native Stockfish binding for Pear's Gambit chess application",
+  "main": "index.js",
+  "scripts": {
+    "build": "cmake-js build",
+    "rebuild": "cmake-js rebuild",
+    "clean": "cmake-js clean",
+    "configure": "cmake-js configure",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "chess",
+    "stockfish",
+    "native",
+    "addon",
+    "pear"
+  ],
+  "author": "Pear's Gambit Team",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "cmake-js": "^7.3.0"
+  },
+  "cmake-js": {
+    "runtime": "node",
+    "runtimeVersion": "20.0.0",
+    "arch": "x64",
+    "platform": "linux"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sentientmachinelabs/pear-chess.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sentientmachinelabs/pear-chess/issues"
+  }
+}
