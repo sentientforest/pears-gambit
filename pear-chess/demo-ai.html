@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pear's Gambit - AI Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        
+        .demo-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+        }
+        
+        .game-section {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .analysis-section {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #4a90e2;
+            margin-bottom: 30px;
+        }
+        
+        h2 {
+            color: #fff;
+            margin-bottom: 20px;
+        }
+        
+        .demo-controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .demo-btn {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .demo-btn:hover {
+            background: #357abd;
+        }
+        
+        .demo-btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            background: #333;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-family: monospace;
+        }
+        
+        .position-input {
+            width: 100%;
+            background: #333;
+            color: #e0e0e0;
+            border: 1px solid #555;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-family: monospace;
+        }
+        
+        .error {
+            color: #e74c3c;
+            background: #441;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .success {
+            color: #27ae60;
+            background: #141;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .analysis-result {
+            background: #333;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .moves-list {
+            background: #333;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+            word-break: break-all;
+        }
+        
+        @media (max-width: 768px) {
+            .demo-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🥐 Pear's Gambit - AI Integration Demo</h1>
+    
+    <div class="demo-container">
+        <div class="game-section">
+            <h2>Chess Position Analysis</h2>
+            
+            <div class="demo-controls">
+                <button id="test-uci" class="demo-btn">Test UCI Protocol</button>
+                <button id="analyze-start" class="demo-btn">Analyze Starting Position</button>
+                <button id="analyze-tactical" class="demo-btn">Analyze Tactical Position</button>
+                <button id="get-hint" class="demo-btn">Get Move Hint</button>
+                <button id="shutdown-ai" class="demo-btn">Shutdown AI</button>
+            </div>
+            
+            <div>
+                <label for="custom-fen">Custom Position (FEN):</label>
+                <input type="text" id="custom-fen" class="position-input" 
+                       placeholder="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+                       value="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1">
+                <button id="analyze-custom" class="demo-btn">Analyze Custom Position</button>
+            </div>
+            
+            <div class="status" id="status">Ready to test AI integration...</div>
+            
+            <div id="results"></div>
+        </div>
+        
+        <div class="analysis-section">
+            <h2>Live Analysis Panel</h2>
+            <div id="analysis-panel-demo"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { AI, createStockfishAnalysis, createHintSystem } from './src/ai/index.js'
+        import { AnalysisPanelComponent } from './src/ui/components/analysis-panel.js'
+        
+        // UI elements
+        const statusEl = document.getElementById('status')
+        const resultsEl = document.getElementById('results')
+        const customFenInput = document.getElementById('custom-fen')
+        
+        // Analysis panel
+        let analysisPanel = null
+        
+        // Initialize analysis panel
+        try {
+            analysisPanel = new AnalysisPanelComponent('analysis-panel-demo', {
+                autoAnalyze: false,
+                showDepthSelector: true,
+                showMultiPV: true
+            })
+            updateStatus('Analysis panel created')
+        } catch (error) {
+            console.error('Failed to create analysis panel:', error)
+            updateStatus('Failed to create analysis panel: ' + error.message, 'error')
+        }
+        
+        // Helper functions
+        function updateStatus(message, type = 'info') {
+            statusEl.textContent = `[${new Date().toLocaleTimeString()}] ${message}`
+            statusEl.className = 'status ' + type
+        }
+        
+        function addResult(title, content, type = 'info') {
+            const resultDiv = document.createElement('div')
+            resultDiv.className = type === 'error' ? 'error' : 'analysis-result'
+            resultDiv.innerHTML = `
+                <strong>${title}:</strong><br>
+                <pre>${typeof content === 'object' ? JSON.stringify(content, null, 2) : content}</pre>
+            `
+            resultsEl.appendChild(resultDiv)
+            resultsEl.scrollTop = resultsEl.scrollHeight
+        }
+        
+        function clearResults() {
+            resultsEl.innerHTML = ''
+        }
+        
+        // Test functions
+        async function testUCI() {
+            updateStatus('Testing UCI protocol...')
+            clearResults()
+            
+            try {
+                const { UCIProtocol } = await import('./src/ai/uci-protocol.js')
+                const uci = new UCIProtocol()
+                
+                // Test line parsing
+                uci.processResponse('id name Stockfish 17\n')
+                uci.processResponse('id author Stockfish developers\n')
+                uci.processResponse('uciok\n')
+                
+                addResult('UCI Protocol Test', 'Successfully parsed engine identification and UCI acknowledgment')
+                updateStatus('UCI protocol test completed', 'success')
+                
+            } catch (error) {
+                addResult('UCI Test Error', error.message, 'error')
+                updateStatus('UCI protocol test failed', 'error')
+            }
+        }
+        
+        async function analyzePosition(fen, title = 'Position Analysis') {
+            updateStatus(`Analyzing position: ${title}...`)
+            
+            try {
+                const analysis = await AI.analyzePosition(fen, { depth: 15 })
+                
+                addResult(title, {
+                    evaluation: analysis.evaluation,
+                    bestMove: analysis.bestMove,
+                    assessment: analysis.assessment?.description,
+                    depth: analysis.depth
+                })
+                
+                // Update analysis panel
+                if (analysisPanel) {
+                    await analysisPanel.setPosition(fen)
+                }
+                
+                updateStatus(`Analysis completed: ${analysis.evaluation?.display || 'N/A'}`, 'success')
+                
+            } catch (error) {
+                addResult(`${title} Error`, error.message, 'error')
+                updateStatus('Analysis failed: ' + error.message, 'error')
+            }
+        }
+        
+        async function getHint(fen) {
+            updateStatus('Getting move hint...')
+            
+            try {
+                const hints = await AI.getHints(fen)
+                
+                addResult('Move Hints', {
+                    bestMove: hints.bestMove,
+                    alternatives: hints.alternatives?.slice(0, 2),
+                    warnings: hints.warnings,
+                    evaluation: hints.evaluation
+                })
+                
+                updateStatus('Hints generated', 'success')
+                
+            } catch (error) {
+                addResult('Hint Error', error.message, 'error')
+                updateStatus('Hint generation failed', 'error')
+            }
+        }
+        
+        // Event listeners
+        document.getElementById('test-uci').addEventListener('click', testUCI)
+        
+        document.getElementById('analyze-start').addEventListener('click', () => {
+            const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+            analyzePosition(startingFen, 'Starting Position')
+        })
+        
+        document.getElementById('analyze-tactical').addEventListener('click', () => {
+            // Tactical position with fork opportunity
+            const tacticalFen = 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 0 1'
+            analyzePosition(tacticalFen, 'Tactical Position')
+        })
+        
+        document.getElementById('analyze-custom').addEventListener('click', () => {
+            const customFen = customFenInput.value.trim()
+            if (customFen) {
+                analyzePosition(customFen, 'Custom Position')
+            } else {
+                updateStatus('Please enter a valid FEN position', 'error')
+            }
+        })
+        
+        document.getElementById('get-hint').addEventListener('click', () => {
+            const fen = customFenInput.value.trim() || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+            getHint(fen)
+        })
+        
+        document.getElementById('shutdown-ai').addEventListener('click', async () => {
+            updateStatus('Shutting down AI...')
+            try {
+                await AI.shutdown()
+                updateStatus('AI shutdown completed', 'success')
+            } catch (error) {
+                updateStatus('AI shutdown failed: ' + error.message, 'error')
+            }
+        })
+        
+        // Initialize AI
+        updateStatus('Initializing AI system...')
+        AI.initialize({ debug: true }).then(() => {
+            updateStatus('AI system initialized successfully!', 'success')
+            
+            // Enable buttons
+            document.querySelectorAll('.demo-btn').forEach(btn => {
+                btn.disabled = false
+            })
+            
+        }).catch(error => {
+            updateStatus('AI initialization failed: ' + error.message, 'error')
+            addResult('AI Initialization Error', error.message, 'error')
+        })
+        
+        // Disable buttons initially
+        document.querySelectorAll('.demo-btn').forEach(btn => {
+            btn.disabled = true
+        })
+    </script>
+</body>
+</html>
