@@ -9,6 +9,25 @@ import { SimpleUCI } from './uci-simple.js'
 import { EventEmitter } from 'events'
 import fs from 'fs/promises'
 import path from 'path'
+import { fileURLToPath } from 'url'
+
+// Import binary manager (only in Node.js environment)
+let StockfishBinaryManager = null
+let detectPlatform = null
+
+try {
+  const __filename = fileURLToPath(import.meta.url)
+  const __dirname = path.dirname(__filename)
+  const scriptsPath = path.join(__dirname, '../../scripts')
+  
+  const binaryManagerModule = await import(path.join(scriptsPath, 'setup-deps.js'))
+  const platformModule = await import(path.join(scriptsPath, 'platform-utils.js'))
+  
+  StockfishBinaryManager = binaryManagerModule.StockfishBinaryManager
+  detectPlatform = platformModule.detectPlatform
+} catch (error) {
+  console.warn('Binary manager not available:', error.message)
+}
 
 /**
  * Simplified external Stockfish engine
@@ -18,7 +37,7 @@ export class SimpleStockfishEngine extends EventEmitter {
     super()
     
     this.options = {
-      binaryPath: options.binaryPath || '/usr/games/stockfish',
+      binaryPath: options.binaryPath || null, // Will auto-detect if not provided
       hashSize: options.hashSize || 256,
       threads: options.threads || 1,
       multiPV: options.multiPV || 1,
@@ -30,6 +49,12 @@ export class SimpleStockfishEngine extends EventEmitter {
     this.process = null
     this.uci = new SimpleUCI()
     this.isReady = false
+    this.binaryManager = null
+    
+    // Initialize binary manager if available
+    if (StockfishBinaryManager && detectPlatform) {
+      this.binaryManager = new StockfishBinaryManager({ debug: this.options.debug })
+    }
     
     this.setupHandlers()
   }
@@ -52,12 +77,49 @@ export class SimpleStockfishEngine extends EventEmitter {
       throw new Error('Engine already started')
     }
     
-    // Check if binary exists
-    try {
-      await fs.access(this.options.binaryPath, fs.constants.X_OK)
-    } catch (error) {
-      throw new Error(`Stockfish not found at ${this.options.binaryPath}`)
+    // Determine binary path
+    let binaryPath = this.options.binaryPath
+    
+    if (!binaryPath && this.binaryManager) {
+      // Use binary manager to get/download Stockfish
+      try {
+        binaryPath = await this.binaryManager.ensureBinaries()
+        if (this.options.debug) {
+          console.log('Using managed Stockfish binary:', binaryPath)
+        }
+      } catch (error) {
+        console.warn('Failed to get managed binary:', error.message)
+      }
     }
+    
+    if (!binaryPath) {
+      // Fallback to common system paths
+      const fallbackPaths = [
+        '/usr/games/stockfish',
+        '/usr/local/bin/stockfish',
+        '/usr/bin/stockfish',
+        'stockfish' // Try PATH
+      ]
+      
+      for (const fallbackPath of fallbackPaths) {
+        try {
+          await fs.access(fallbackPath, fs.constants.X_OK)
+          binaryPath = fallbackPath
+          if (this.options.debug) {
+            console.log('Using system Stockfish binary:', binaryPath)
+          }
+          break
+        } catch (error) {
+          // Continue to next fallback
+        }
+      }
+    }
+    
+    if (!binaryPath) {
+      throw new Error('Stockfish binary not found. Install stockfish or use binary manager.')
+    }
+    
+    this.options.binaryPath = binaryPath
     
     // Spawn process
     this.process = spawn(this.options.binaryPath, [], {

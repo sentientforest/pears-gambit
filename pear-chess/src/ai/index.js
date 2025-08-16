@@ -10,16 +10,35 @@ export { StubEngine, StubGameAnalyzer } from './engine-stub.js'
 import { OpeningBook } from './opening-book.js'
 import { StubEngine, StubGameAnalyzer } from './engine-stub.js'
 
+// Try to import real external engine (Node.js only)
+let SimpleStockfishEngine = null
+
+try {
+  const externalEngineModule = await import('./external-engine-simple.js')
+  SimpleStockfishEngine = externalEngineModule.SimpleStockfishEngine
+} catch (error) {
+  console.warn('External engine not available, using stubs:', error.message)
+}
+
 /**
  * Create a Stockfish analysis instance
  * @param {Object} options - Configuration options
- * @returns {StubEngine} Stockfish engine instance (stub)
+ * @returns {SimpleStockfishEngine|StubEngine} Stockfish engine instance
  */
 export function createStockfishAnalysis(options = {}) {
-  return new StubEngine({
-    debug: false,
-    ...options
-  })
+  if (SimpleStockfishEngine) {
+    // Use real external engine when available
+    return new SimpleStockfishEngine({
+      debug: false,
+      ...options
+    })
+  } else {
+    // Fallback to stub engine for Pear Runtime compatibility
+    return new StubEngine({
+      debug: false,
+      ...options
+    })
+  }
 }
 
 /**
@@ -173,7 +192,9 @@ class AIModule {
       initialized: this.initialized,
       stockfishReady: this.stockfish?.isReady || false,
       openingBookLoaded: this.openingBook !== null,
-      gameAnalyzerReady: this.gameAnalyzer !== null
+      gameAnalyzerReady: this.gameAnalyzer !== null,
+      engineType: SimpleStockfishEngine ? 'external' : 'stub',
+      hasRealStockfish: SimpleStockfishEngine !== null
     }
   }
 
