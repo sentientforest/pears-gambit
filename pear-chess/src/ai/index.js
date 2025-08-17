@@ -10,8 +10,9 @@ export { StubEngine, StubGameAnalyzer } from './engine-stub.js'
 import { OpeningBook } from './opening-book.js'
 import { StubEngine, StubGameAnalyzer } from './engine-stub.js'
 
-// Try to import real external engine (Node.js only)
+// Try to import real engines (Node.js only)
 let SimpleStockfishEngine = null
+let NativeStockfishEngine = null
 
 try {
   const externalEngineModule = await import('./external-engine-simple.js')
@@ -20,25 +21,53 @@ try {
   console.warn('External engine not available, using stubs:', error.message)
 }
 
+try {
+  const nativeEngineModule = await import('./native-engine.js')
+  NativeStockfishEngine = nativeEngineModule.NativeStockfishEngine
+} catch (error) {
+  console.warn('Native engine not available:', error.message)
+}
+
 /**
  * Create a Stockfish analysis instance
  * @param {Object} options - Configuration options
- * @returns {SimpleStockfishEngine|StubEngine} Stockfish engine instance
+ * @returns {NativeStockfishEngine|SimpleStockfishEngine|StubEngine} Stockfish engine instance
  */
 export function createStockfishAnalysis(options = {}) {
-  if (SimpleStockfishEngine) {
-    // Use real external engine when available
+  const engineType = options.engineType || 'auto'
+  
+  if (engineType === 'native' && NativeStockfishEngine) {
+    // Use native engine when explicitly requested and available
+    return new NativeStockfishEngine({
+      debug: false,
+      ...options
+    })
+  } else if (engineType === 'external' && SimpleStockfishEngine) {
+    // Use external engine when explicitly requested and available
     return new SimpleStockfishEngine({
       debug: false,
       ...options
     })
-  } else {
-    // Fallback to stub engine for Pear Runtime compatibility
-    return new StubEngine({
-      debug: false,
-      ...options
-    })
+  } else if (engineType === 'auto') {
+    // Auto-select best available engine
+    if (NativeStockfishEngine) {
+      return new NativeStockfishEngine({
+        debug: false,
+        ...options
+      })
+    } else if (SimpleStockfishEngine) {
+      return new SimpleStockfishEngine({
+        debug: false,
+        ...options
+      })
+    }
   }
+  
+  // Fallback to stub engine for Pear Runtime compatibility
+  return new StubEngine({
+    debug: false,
+    ...options
+  })
 }
 
 /**
@@ -188,13 +217,24 @@ class AIModule {
    * @returns {Object} Status information
    */
   getStatus() {
+    let engineType = 'stub'
+    if (this.stockfish) {
+      if (this.stockfish.constructor.name === 'NativeStockfishEngine') {
+        engineType = 'native'
+      } else if (this.stockfish.constructor.name === 'SimpleStockfishEngine') {
+        engineType = 'external'
+      }
+    }
+    
     return {
       initialized: this.initialized,
       stockfishReady: this.stockfish?.isReady || false,
       openingBookLoaded: this.openingBook !== null,
       gameAnalyzerReady: this.gameAnalyzer !== null,
-      engineType: SimpleStockfishEngine ? 'external' : 'stub',
-      hasRealStockfish: SimpleStockfishEngine !== null
+      engineType,
+      hasNativeEngine: NativeStockfishEngine !== null,
+      hasExternalEngine: SimpleStockfishEngine !== null,
+      hasRealStockfish: (NativeStockfishEngine !== null) || (SimpleStockfishEngine !== null)
     }
   }
 
