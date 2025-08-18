@@ -68,5 +68,10 @@ message(STATUS "  cmake_test_exe    - Test executable")
 # Add Stockfish port configuration
 include(cmake/ports/stockfish/port.cmake)
 
+# Debug: Check Stockfish variables after port configuration
+message(STATUS "After port configuration:")
+message(STATUS "  STOCKFISH_INCLUDE_DIR: ${STOCKFISH_INCLUDE_DIR}")
+message(STATUS "  STOCKFISH_LIBRARIES: ${STOCKFISH_LIBRARIES}")
+
 # Add native binding subdirectory
 add_subdirectory(src/ai/native)

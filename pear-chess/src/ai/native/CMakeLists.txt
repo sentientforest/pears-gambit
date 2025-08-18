@@ -69,6 +69,7 @@ endif()
 # Common properties
 target_compile_definitions(stockfish_binding PRIVATE
     BUILDING_STOCKFISH_BINDING
+    BUILDING_WITH_REAL_STOCKFISH
 )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
