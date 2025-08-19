@@ -31,16 +31,11 @@ public:
             Bitboards::init();
             Position::init();
             
-            // Create engine instance with null path (no network loading)
-            engine_ = std::make_unique<Engine>(std::nullopt);
+            // Create engine instance with default settings
+            engine_ = std::make_unique<Engine>();
             
             // Initialize tunable parameters
             Tune::init(engine_->get_options());
-            
-            // Set default engine options for safe operation
-            auto& options = engine_->get_options();
-            // Note: Engine API doesn't allow modifying options after creation
-            // Options are set through constructor or command interface
             
             // Set up callbacks to capture search info
             engine_->set_on_bestmove([this](std::string_view best, std::string_view ponder) {
@@ -94,6 +89,7 @@ public:
             // Clear previous results
             last_best_move_.clear();
             last_ponder_move_.clear();
+            last_search_info_ = Engine::InfoFull{};
             
             // Start search (non-blocking)
             engine_->go(limits);
@@ -181,6 +177,7 @@ private:
 class StockfishEngine::Impl {
 public:
     bool initialize() {
+        std::cout << "*** STUB IMPLEMENTATION INITIALIZING ***" << std::endl;
         std::cout << "StockfishEngine::Impl::initialize() - stub implementation" << std::endl;
         return true;
     }

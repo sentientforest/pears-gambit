@@ -61,6 +61,12 @@ else()
     target_link_libraries(test_binding stockfish_binding ${STOCKFISH_LIBRARIES})
     target_include_directories(test_binding PRIVATE ${STOCKFISH_INCLUDE_DIR})
     
+    # Test executable needs same compile definitions as the binding
+    target_compile_definitions(test_binding PRIVATE
+        BUILDING_STOCKFISH_BINDING
+        BUILDING_WITH_REAL_STOCKFISH
+    )
+    
     set_target_properties(test_binding PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test
     )
