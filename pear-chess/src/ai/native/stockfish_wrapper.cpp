@@ -95,6 +95,8 @@ public:
             engine_->go(limits);
             
             // Wait for search to complete
+            // NOTE: This may take a long time on older hardware (2010 Xeon)
+            // with NNUE neural network evaluation. Should be tested on faster hardware.
             engine_->wait_for_search_finished();
             
             // Build result from captured info

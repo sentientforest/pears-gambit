@@ -82,7 +82,7 @@ int main() {
         assert(!engine.is_ready());
         std::cout << " Engine shutdown successfully" << std::endl;
         
-        std::cout << "\n<‰ All native binding tests passed!" << std::endl;
+        std::cout << "\n<ï¿½ All native binding tests passed!" << std::endl;
         
     } catch (const std::exception& e) {
         std::cerr << "L Test failed with exception: " << e.what() << std::endl;

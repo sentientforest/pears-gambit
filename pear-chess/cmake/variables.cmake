@@ -15,40 +15,40 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
         set(TARGET_PLATFORM "linux-x64")
-        set(STOCKFISH_ARCH "x86-64-modern")
+        set(STOCKFISH_ARCH "x86-64-sse41-popcnt")
     elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
         set(TARGET_PLATFORM "linux-arm64")
         set(STOCKFISH_ARCH "armv8")
     else()
         message(WARNING "Unsupported Linux architecture: ${CMAKE_SYSTEM_PROCESSOR}")
         set(TARGET_PLATFORM "linux-x64")  # Fallback
-        set(STOCKFISH_ARCH "x86-64-modern")
+        set(STOCKFISH_ARCH "x86-64-sse41-popcnt")
     endif()
     
     # Linux-specific compiler flags
-    set(PLATFORM_CXX_FLAGS "-pthread -flto")
-    set(PLATFORM_LINKER_FLAGS "-pthread -flto")
+    set(PLATFORM_CXX_FLAGS "-pthread")
+    set(PLATFORM_LINKER_FLAGS "-pthread")
     
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
         set(TARGET_PLATFORM "darwin-x64")
-        set(STOCKFISH_ARCH "x86-64-modern")
+        set(STOCKFISH_ARCH "x86-64-sse41-popcnt")
     elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
         set(TARGET_PLATFORM "darwin-arm64")
         set(STOCKFISH_ARCH "apple-silicon")
     else()
         message(WARNING "Unsupported macOS architecture: ${CMAKE_SYSTEM_PROCESSOR}")
         set(TARGET_PLATFORM "darwin-x64")  # Fallback
-        set(STOCKFISH_ARCH "x86-64-modern")
+        set(STOCKFISH_ARCH "x86-64-sse41-popcnt")
     endif()
     
     # macOS-specific compiler flags
-    set(PLATFORM_CXX_FLAGS "-stdlib=libc++ -flto")
-    set(PLATFORM_LINKER_FLAGS "-stdlib=libc++ -flto")
+    set(PLATFORM_CXX_FLAGS "-stdlib=libc++")
+    set(PLATFORM_LINKER_FLAGS "-stdlib=libc++")
     
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set(TARGET_PLATFORM "win32-x64")
-    set(STOCKFISH_ARCH "x86-64-modern")
+    set(STOCKFISH_ARCH "x86-64-sse41-popcnt")
     
     # Windows-specific compiler flags
     set(PLATFORM_CXX_FLAGS "/O2 /GL")
