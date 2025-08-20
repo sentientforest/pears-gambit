@@ -1,162 +1,102 @@
-# CMakeLists.txt for Stockfish Native Binding
-# Based on bare-ffmpeg pattern for Pear Runtime
-
+# Native Stockfish Binding for Pear Chess
 cmake_minimum_required(VERSION 3.16)
 
-# Project configuration
-project(pear-chess-stockfish LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Check if we're building as part of bare runtime or standalone
+set(BUILDING_FOR_BARE FALSE)
 
-# Platform detection
-if(WIN32)
-  set(BARE_PLATFORM "win32")
-elseif(APPLE)
-  set(BARE_PLATFORM "darwin")
+# Try to find bare runtime dependencies
+find_package(cmake-bare QUIET PATHS ${CMAKE_SOURCE_DIR}/node_modules/cmake-bare)
+find_package(cmake-harden QUIET PATHS ${CMAKE_SOURCE_DIR}/node_modules/cmake-harden)
+
+if(cmake-bare_FOUND AND cmake-harden_FOUND)
+    set(BUILDING_FOR_BARE TRUE)
+    message(STATUS "Building native binding for Bare runtime")
 else()
-  set(BARE_PLATFORM "linux")
+    message(STATUS "Building native binding as standalone library")
 endif()
 
-# Architecture detection
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-  set(BARE_ARCH "x64")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
-  set(BARE_ARCH "arm64")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
-  set(BARE_ARCH "arm")
+# Source files for the binding
+set(BINDING_SOURCES
+    stockfish_wrapper.cpp
+    binding.cpp
+)
+
+if(BUILDING_FOR_BARE)
+    # Build as Bare module
+    add_bare_module(stockfish_binding)
+    harden(stockfish_binding)
+    
+    target_sources(stockfish_binding PRIVATE ${BINDING_SOURCES})
+    
+    # Link with Stockfish
+    target_link_libraries(stockfish_binding PRIVATE ${STOCKFISH_LIBRARIES})
+    target_include_directories(stockfish_binding PRIVATE ${STOCKFISH_INCLUDE_DIR})
+    
+    # Set output directory
+    set_target_properties(stockfish_binding PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${NATIVE_MODULE_OUTPUT_DIR}
+        RUNTIME_OUTPUT_DIRECTORY ${NATIVE_MODULE_OUTPUT_DIR}
+    )
+    
 else()
-  message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+    # Build as standalone shared library for testing
+    add_library(stockfish_binding SHARED ${BINDING_SOURCES})
+    
+    # Link with Stockfish
+    target_link_libraries(stockfish_binding PRIVATE ${STOCKFISH_LIBRARIES})
+    target_include_directories(stockfish_binding PRIVATE ${STOCKFISH_INCLUDE_DIR})
+    
+    # Set properties
+    set_target_properties(stockfish_binding PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "stockfish_binding"
+        LIBRARY_OUTPUT_DIRECTORY ${NATIVE_MODULE_OUTPUT_DIR}
+        RUNTIME_OUTPUT_DIRECTORY ${NATIVE_MODULE_OUTPUT_DIR}
+    )
+    
+    # Add a simple test executable
+    add_executable(test_binding test_binding.cpp)
+    target_link_libraries(test_binding stockfish_binding ${STOCKFISH_LIBRARIES})
+    target_include_directories(test_binding PRIVATE ${STOCKFISH_INCLUDE_DIR})
+    
+    # Test executable needs same compile definitions as the binding
+    target_compile_definitions(test_binding PRIVATE
+        BUILDING_STOCKFISH_BINDING
+        BUILDING_WITH_REAL_STOCKFISH
+    )
+    
+    set_target_properties(test_binding PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test
+    )
 endif()
 
-# Build configuration
+# Common properties
+target_compile_definitions(stockfish_binding PRIVATE
+    BUILDING_STOCKFISH_BINDING
+    BUILDING_WITH_REAL_STOCKFISH
+)
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(BARE_BUILD_TYPE "debug")
-else()
-  set(BARE_BUILD_TYPE "release")
+    target_compile_definitions(stockfish_binding PRIVATE DEBUG_BINDING)
 endif()
 
-# Output directory
-set(BARE_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../prebuilds/${BARE_PLATFORM}-${BARE_ARCH}")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${BARE_OUTPUT_DIR}")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${BARE_OUTPUT_DIR}")
+message(STATUS "Native binding configuration:")
+message(STATUS "  Building for Bare: ${BUILDING_FOR_BARE}")
+message(STATUS "  Output directory: ${NATIVE_MODULE_OUTPUT_DIR}")
+message(STATUS "  Stockfish include: ${STOCKFISH_INCLUDE_DIR}")
 
-# Compiler flags
-if(MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3")
-else()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O3 -DNDEBUG")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto -march=native")
+# Add custom target for easy building
+add_custom_target(build_native_binding
+    DEPENDS stockfish_binding
+    COMMENT "Building native Stockfish binding"
+)
+
+if(NOT BUILDING_FOR_BARE)
+    add_custom_target(test_native_binding
+        DEPENDS test_binding
+        COMMAND $<TARGET_FILE:test_binding>
+        COMMENT "Testing native Stockfish binding"
+    )
 endif()
-
-# Find required packages
-find_package(PkgConfig QUIET)
-
-# Try to find system Stockfish first
-find_path(STOCKFISH_INCLUDE_DIR
-  NAMES stockfish.h uci.h
-  PATHS
-    /usr/include/stockfish
-    /usr/local/include/stockfish
-    /opt/homebrew/include/stockfish
-    ${CMAKE_CURRENT_SOURCE_DIR}/stockfish/src
-)
-
-find_library(STOCKFISH_LIBRARY
-  NAMES stockfish libstockfish.a
-  PATHS
-    /usr/lib
-    /usr/local/lib
-    /opt/homebrew/lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/stockfish/src
-)
-
-# If system Stockfish not found, build from source
-if(NOT STOCKFISH_INCLUDE_DIR OR NOT STOCKFISH_LIBRARY)
-  message(STATUS "System Stockfish not found, will build from source")
-  
-  # Include ExternalProject module
-  include(ExternalProject)
-  
-  # Download and build Stockfish
-  ExternalProject_Add(
-    stockfish-external
-    GIT_REPOSITORY https://github.com/official-stockfish/Stockfish.git
-    GIT_TAG sf_16
-    SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/stockfish-src
-    CONFIGURE_COMMAND ""
-    BUILD_COMMAND make -C <SOURCE_DIR>/src build ARCH=x86-64-modern
-    INSTALL_COMMAND ""
-    BUILD_IN_SOURCE 1
-  )
-  
-  set(STOCKFISH_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/stockfish-src/src)
-  set(STOCKFISH_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/stockfish-src/src/stockfish)
-  set(STOCKFISH_BUILT_FROM_SOURCE TRUE)
-endif()
-
-# Include directories
-include_directories(${STOCKFISH_INCLUDE_DIR})
-
-# Source files
-set(SOURCES
-  binding.cpp
-  stockfish_wrapper.cpp
-  uci_interface.cpp
-)
-
-# Create shared library
-add_library(${PROJECT_NAME} SHARED ${SOURCES})
-
-# Set target properties
-set_target_properties(${PROJECT_NAME} PROPERTIES
-  PREFIX ""
-  OUTPUT_NAME "stockfish"
-  SUFFIX ".node"
-)
-
-# Link libraries
-if(STOCKFISH_BUILT_FROM_SOURCE)
-  add_dependencies(${PROJECT_NAME} stockfish-external)
-  target_link_libraries(${PROJECT_NAME} PRIVATE ${STOCKFISH_LIBRARY})
-else()
-  target_link_libraries(${PROJECT_NAME} PRIVATE ${STOCKFISH_LIBRARY})
-endif()
-
-# Platform-specific settings
-if(WIN32)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN)
-  target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32)
-elseif(APPLE)
-  set_target_properties(${PROJECT_NAME} PROPERTIES
-    MACOSX_RPATH ON
-    INSTALL_NAME_DIR "@rpath"
-  )
-else()
-  target_link_libraries(${PROJECT_NAME} PRIVATE pthread)
-endif()
-
-# Install rules
-install(TARGETS ${PROJECT_NAME}
-  DESTINATION ${BARE_OUTPUT_DIR}
-)
-
-# Custom target for cleaning prebuilds
-add_custom_target(clean-prebuilds
-  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_SOURCE_DIR}/../../../prebuilds
-  COMMENT "Cleaning prebuilds directory"
-)
-
-# Print configuration summary
-message(STATUS "=== Pear Chess Stockfish Native Binding Configuration ===")
-message(STATUS "Platform: ${BARE_PLATFORM}")
-message(STATUS "Architecture: ${BARE_ARCH}")
-message(STATUS "Build Type: ${BARE_BUILD_TYPE}")
-message(STATUS "Output Directory: ${BARE_OUTPUT_DIR}")
-message(STATUS "Stockfish Include: ${STOCKFISH_INCLUDE_DIR}")
-message(STATUS "Stockfish Library: ${STOCKFISH_LIBRARY}")
-if(STOCKFISH_BUILT_FROM_SOURCE)
-  message(STATUS "Stockfish: Building from source")
-else()
-  message(STATUS "Stockfish: Using system installation")
-endif()
-message(STATUS "=========================================================")
