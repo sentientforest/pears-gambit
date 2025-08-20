@@ -56,6 +56,11 @@ else()
         RUNTIME_OUTPUT_DIRECTORY ${NATIVE_MODULE_OUTPUT_DIR}
     )
     
+    # Disable LTO to avoid INCBIN assembler issues
+    set_target_properties(stockfish_binding PROPERTIES
+        INTERPROCEDURAL_OPTIMIZATION OFF
+    )
+    
     # Add a simple test executable
     add_executable(test_binding test_binding.cpp)
     target_link_libraries(test_binding stockfish_binding ${STOCKFISH_LIBRARIES})

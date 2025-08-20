@@ -7,6 +7,9 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# Disable LTO globally to avoid INCBIN issues with Stockfish
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
+
 # Include our configuration files
 include(cmake/variables.cmake)
 
